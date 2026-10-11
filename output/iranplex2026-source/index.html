@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fa">
+<head>
+<meta charset="utf-8">
+<style>
+@font-face{font-family:Vazirmatn;src:url(assets/Vazirmatn-VF.woff2) format('woff2');font-weight:100 900}
+:root{--or:#F26A1B;--br:#5E2614;--red:#D9282F;--ink:#2b1a14;--bg:#F7F3EF}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden;background:var(--bg)}
+#stage{position:absolute;inset:0;overflow:hidden;background:var(--bg);font-family:Vazirmatn,Tahoma,sans-serif}
+.abs{position:absolute}
+.fa{direction:rtl;unicode-bidi:isolate;font-family:Vazirmatn;white-space:nowrap;line-height:1.7}
+.en{direction:ltr;font-family:Vazirmatn;white-space:nowrap}
+.mask{overflow:hidden;padding:.5em 0;margin:-.5em 0}
+#bg25{left:50%;top:50%;font-family:Vazirmatn;font-weight:900;font-size:1500px;line-height:1;color:transparent;
+  -webkit-text-stroke:0;letter-spacing:-60px;opacity:0}
+#strip{left:0;top:0;width:1080px;will-change:transform}
+.scene{position:absolute;left:0;width:1080px;height:1920px}
+canvas.card{position:absolute;border-radius:48px;box-shadow:0 40px 80px rgba(60,25,10,.22)}
+.bar{position:absolute;left:0;width:1080px;background:var(--or)}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="bg25" class="abs en">25</div>
+  <div id="strip" class="abs">
+
+    <!-- S1: logo + organiser -->
+    <div class="scene" id="s1" style="top:0">
+      <img id="logo" class="abs" src="assets/logo_a.png" style="left:85px;top:420px;width:910px">
+      <div class="abs mask" style="right:0;left:0;top:1170px;text-align:center"><div id="org1" class="fa" style="font-size:118px;font-weight:900;color:var(--br)">ویرا واکسن سایت</div></div>
+      <div class="abs mask" style="right:0;left:0;top:1360px;text-align:center"><div id="org2" class="fa" style="font-size:76px;font-weight:600;color:var(--or)">برگزار می‌کند</div></div>
+    </div>
+
+    <!-- S2: footage + title -->
+    <div class="scene" id="s2" style="top:1920px">
+      <canvas id="card2" class="card" width="960" height="960" style="left:60px;top:250px"></canvas>
+      <div class="abs" style="right:70px;left:70px;top:1235px;text-align:right">
+        <div class="mask"><div id="t1" class="fa" style="font-size:66px;font-weight:700;color:var(--br)">بیست و پنجمین نمایشگاه بین‌المللی</div></div>
+        <div class="mask" style="margin-top:-30px"><div id="t2" class="fa" style="font-size:170px;font-weight:900;color:var(--red)">دام، طیور</div></div>
+        <div class="mask" style="margin-top:-50px"><div id="t3" class="fa" style="font-size:84px;font-weight:700;color:var(--br)">و صنایع وابسته</div></div>
+      </div>
+    </div>
+
+    <!-- S3: dates (tilted kinetic type) -->
+    <div class="scene" id="s3" style="top:3840px">
+      <div id="tilt" class="abs" style="left:0;top:0;width:1080px;height:1920px;transform-origin:540px 960px">
+        <div class="abs" style="right:80px;top:330px"><div class="mask"><div id="d0" class="fa" style="font-size:64px;font-weight:700;color:var(--or)">زمان برگزاری</div></div></div>
+        <div class="abs" style="right:70px;top:470px"><div class="mask"><div id="d1" class="fa" style="font-size:205px;font-weight:900;color:var(--red)">۲۶ الی ۲۹</div></div></div>
+        <div class="abs" style="right:80px;top:780px"><div class="mask"><div id="d2" class="fa" style="font-size:140px;font-weight:800;color:var(--br)">مهر ماه ۱۴۰۵</div></div></div>
+        <div class="abs" style="left:80px;top:1030px"><div class="mask"><div id="d3" class="en" style="font-size:78px;font-weight:700;color:var(--or)">18 – 21 October 2026</div></div></div>
+        <div class="abs" style="right:80px;top:1210px"><div class="mask"><div id="d4" class="fa" style="font-size:64px;font-weight:600;color:var(--br)">ساعت بازدید: <bdi>۰۸:۰۰</bdi> الی <bdi>۱۶:۰۰</bdi></div></div></div>
+      </div>
+    </div>
+
+    <!-- S4: venue -->
+    <div class="scene" id="s4" style="top:5760px">
+      <canvas id="card4" class="card" width="960" height="960" style="left:60px;top:250px"></canvas>
+      <div class="abs" style="right:70px;left:70px;top:1235px;text-align:right">
+        <div class="mask"><div id="v1" class="fa" style="font-size:70px;font-weight:700;color:var(--or)">محل دائمی</div></div>
+        <div class="mask" style="margin-top:-40px"><div id="v2" class="fa" style="font-size:74px;font-weight:900;color:var(--br)">نمایشگاه‌های بین‌المللی تهران</div></div>
+        <div class="mask" style="margin-top:-10px;text-align:left"><div id="v3" class="en" style="font-size:44px;font-weight:600;color:var(--red);display:inline-block">Tehran International Permanent Fairground</div></div>
+      </div>
+    </div>
+
+    <!-- S5: end card / poster -->
+    <div class="scene" id="s5" style="top:7680px">
+      <div id="topbar" class="bar" style="top:0;height:24px"></div>
+      <img id="logo5" class="abs" src="assets/logo_a.png" style="left:215px;top:250px;width:650px">
+      <div class="abs" style="left:0;right:0;top:700px;text-align:center">
+        <div class="mask"><div id="p1" class="fa" style="font-size:54px;font-weight:700;color:var(--or)">بیست و پنجمین نمایشگاه بین‌المللی</div></div>
+        <div class="mask" style="margin-top:-46px"><div id="p2" class="fa" style="font-size:168px;font-weight:900;color:var(--red)">دام، طیور</div></div>
+        <div class="mask" style="margin-top:-66px"><div id="p3" class="fa" style="font-size:66px;font-weight:700;color:var(--br)">و صنایع وابسته</div></div>
+      </div>
+      <div id="p4" class="abs en" style="left:110px;top:1135px;display:flex;align-items:center;gap:22px;color:var(--br)">
+        <div style="font-size:150px;font-weight:900;color:var(--or);line-height:1">25<sup style="font-size:46px;vertical-align:top;position:relative;top:14px">th</sup></div>
+        <div style="font-size:40px;font-weight:700;line-height:1.2">International Exhibition of<br>Poultry, Livestock<br>&amp; Related Industries</div>
+      </div>
+      <div id="p5" class="abs" style="left:110px;right:110px;top:1365px;border-top:4px solid var(--or);padding-top:26px">
+        <div class="fa" style="font-size:52px;font-weight:800;color:var(--red);text-align:right;line-height:1.5">۲۶ الی ۲۹ مهر ماه ۱۴۰۵ <span class="en" style="font-size:38px;color:var(--br);font-weight:600;float:left;line-height:2">18–21 Oct 2026</span></div>
+        <div class="fa" style="font-size:40px;font-weight:600;color:var(--br);text-align:right;line-height:1.6">ساعت بازدید: <bdi>۰۸:۰۰</bdi> الی <bdi>۱۶:۰۰</bdi></div>
+        <div class="fa" style="font-size:40px;font-weight:600;color:var(--br);text-align:right;line-height:1.6">محل دائمی نمایشگاه‌های بین‌المللی تهران</div>
+      </div>
+      <div id="botbar" class="bar" style="top:1690px;height:230px;display:flex;align-items:center;justify-content:space-between;padding:0 110px 40px">
+        <div class="en" style="font-size:52px;font-weight:900;color:#fff;letter-spacing:2px">IRAN PLEX 2026</div>
+        <div class="fa" style="font-size:42px;font-weight:700;color:#fff">ویرا واکسن سایت</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<script>
+const FPS=30, DUR=21;
+// ---------- easing ----------
+function bez(p1x,p1y,p2x,p2y){return t=>{if(t<=0)return 0;if(t>=1)return 1;let lo=0,hi=1,u=t;for(let i=0;i<30;i++){u=(lo+hi)/2;const x=3*(1-u)*(1-u)*u*p1x+3*(1-u)*u*u*p2x+u*u*u;if(x<t)lo=u;else hi=u}return 3*(1-u)*(1-u)*u*p1y+3*(1-u)*u*u*p2y+u*u*u}}
+const IN=bez(.16,1,.3,1), OUT=bez(.7,0,.84,0), WHIP=bez(.75,0,.2,1), SINE=bez(.37,0,.63,1);
+const cl=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const p=(t,a,b)=>cl((t-a)/(b-a));
+const lerp=(a,b,k)=>a+(b-a)*k;
+const $=id=>document.getElementById(id);
+
+// ---------- footage ----------
+const SEQ={cow:78,hen:28,egg:78,venue:94}, IMG={};
+function loadAll(){const ps=[];for(const k in SEQ){IMG[k]=[];for(let i=1;i<=SEQ[k];i++){const im=new Image();im.src=`assets/f_${k}/${String(i).padStart(4,'0')}.jpg`;IMG[k].push(im);ps.push(new Promise((res,rej)=>{im.onload=res;im.onerror=()=>rej(new Error('img '+im.src))}))}}return Promise.all(ps)}
+function drawCard(cv,name,local,dur,zoomFrom,zoomTo,punch){
+  const c=cv.getContext('2d'),seq=IMG[name],n=seq.length;
+  const idx=Math.min(n-1,Math.floor(cl(local/dur)*n));
+  const z=lerp(zoomFrom,zoomTo,SINE(cl(local/dur)))*(1+0.06*(1-IN(cl(local/0.35))))*(punch?1:1);
+  const s=960*z;c.clearRect(0,0,960,960);c.drawImage(seq[idx],(960-s)/2,(960-s)/2,s,s);
+}
+
+// ---------- reveal helpers (whole words / lines only — never per letter) ----------
+function rise(el,t,t0,dist=1.1){const k=IN(p(t,t0,t0+0.7));el.style.transform=`translateY(${(1-k)*dist*100}%)`;el.style.opacity=k>0?1:0}
+function wipeRTL(el,t,t0,d=0.6){const k=IN(p(t,t0,t0+d));el.style.clipPath=`inset(-40% 0 -40% ${(1-k)*100}%)`}
+function wipeLTR(el,t,t0,d=0.6){const k=IN(p(t,t0,t0+d));el.style.clipPath=`inset(-40% ${(1-k)*100}% -40% 0)`}
+
+// ---------- camera: one strip, whip between scenes ----------
+const CUTS=[3.5,9.5,13.5,17.0], WD=0.45;
+function camY(t){let y=0;for(let i=0;i<CUTS.length;i++){y+=1920*WHIP(p(t,CUTS[i]-WD*0.55,CUTS[i]+WD*0.45))}return y}
+
+function render(t){
+  // camera
+  const y=camY(t), v=Math.abs(camY(t+1/FPS)-y);
+  const breathe=1+0.012*Math.sin(t*0.9);
+  $('strip').style.transform=`translateY(${-y}px)`;
+  $('strip').style.filter=v>8?`blur(${Math.min(28,v*0.18)}px)`:'none';
+  $('stage').style.transform=`scale(${breathe})`;
+
+  // giant "25" watermark carries from scene 2 to the end (parallax at 15% camera speed)
+  const w=IN(p(t,3.2,4.2));
+  const bg=$('bg25');
+  bg.style.opacity=w*(t>16.6?lerp(1,0.55,p(t,16.6,17.4)):1);
+  bg.style.color=`rgba(217,40,47,0.07)`;
+  bg.style.transform=`translate(-50%,-50%) translateY(${-y*0.15+1300*0.15*2.2}px) rotate(${lerp(-4,-10,SINE(p(t,3.5,17)))}deg) scale(${lerp(1.25,1,w)})`;
+
+  // S1 — logo lands, organiser reveals right-to-left
+  const lk=IN(p(t,0,1.1));
+  $('logo').style.transform=`translateY(${(1-lk)*80 - 60*SINE(p(t,1,3.5))}px) scale(${lerp(1.18,1,lk)*lerp(1,1.05,SINE(p(t,1,3.5)))})`;
+  $('logo').style.opacity=lk; $('logo').style.filter=`blur(${(1-lk)*18}px)`;
+  rise($('org1'),t,1.0); wipeRTL($('org1'),t,1.0,0.8);
+  rise($('org2'),t,1.55);
+
+  // S2 — footage card on the beat: cow 3.5–6.0, hen 6.0–6.9, egg 6.9–9.5
+  const c2=$('card2');
+  if(t<6.0) drawCard(c2,'cow',t-3.5,2.6,1.0,1.08);
+  else if(t<6.9) drawCard(c2,'hen',t-6.0,0.93,1.02,1.08);
+  else drawCard(c2,'egg',t-6.9,2.6,1.0,1.06);
+  const ck=IN(p(t,3.2,4.0));
+  c2.style.transform=`translateY(${(1-ck)*140}px) scale(${lerp(0.9,1,ck)}) rotate(${lerp(3,0,ck)}deg)`;
+  rise($('t1'),t,3.45); wipeRTL($('t1'),t,3.45,0.9);
+  rise($('t2'),t,6.05,1.0);
+  $('t2').style.transform+=` scale(${1+0.04*(1-IN(p(t,6.05,6.6)))})`;
+  rise($('t3'),t,7.6);
+
+  // S3 — tilted kinetic dates, slow drift
+  const tk=SINE(p(t,9.0,13.6));
+  $('tilt').style.transform=`translateY(110px) rotate(${-7+2*tk}deg) translate(${lerp(30,-30,tk)}px,${lerp(40,-60,tk)}px) scale(${lerp(1.06,1,tk)})`;
+  rise($('d0'),t,9.5); rise($('d1'),t,9.6,1.0); rise($('d2'),t,10.5); wipeLTR($('d3'),t,11.4,0.8); rise($('d4'),t,12.2);
+
+  // S4 — venue: map card (slow-motion), lines in
+  drawCard($('card4'),'venue',t-13.2,4.0,1.0,1.12);
+  rise($('v1'),t,13.45); rise($('v2'),t,13.75); wipeRTL($('v2'),t,13.75,0.9); wipeLTR($('v3'),t,15.3,0.9);
+
+  // S5 — poster end card, staggered (lead element first, others 2–4 frames behind)
+  $('topbar').style.transform=`scaleX(${IN(p(t,16.9,17.5))})`; $('topbar').style.transformOrigin='right';
+  const l5=IN(p(t,16.95,17.8));
+  $('logo5').style.transform=`translateY(${(1-l5)*-60}px) scale(${lerp(0.85,1,l5)})`; $('logo5').style.opacity=l5;
+  rise($('p1'),t,17.15); rise($('p2'),t,17.25); rise($('p3'),t,17.38);
+  const q4=IN(p(t,17.5,18.2)); $('p4').style.opacity=q4; $('p4').style.transform=`translateX(${(1-q4)*-60}px)`;
+  const q5=IN(p(t,17.65,18.35)); $('p5').style.opacity=q5; $('p5').style.transform=`translateY(${(1-q5)*40}px)`;
+  const bb=IN(p(t,17.0,17.7)); $('botbar').style.transform=`translateY(${(1-bb)*230}px)`;
+}
+window.__ready=document.fonts.load('900 100px Vazirmatn').then(()=>document.fonts.load('400 100px Vazirmatn')).then(loadAll).then(()=>document.fonts.ready).then(()=>{render(0);return true});
+window.render=render;
+</script>
+</body>
+</html>
