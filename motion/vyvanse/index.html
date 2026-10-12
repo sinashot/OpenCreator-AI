@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Vyvanse Motion</title>
+<style>
+  html,body{margin:0;background:#0b1020;}
+  canvas{display:block;width:540px;height:960px;}
+</style>
+</head>
+<body>
+<canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// ───────────────────────────── setup ─────────────────────────────
+const W = 1080, H = 1920, FPS = 30;
+const D = 3.5;               // intro disclaimer length (narration starts here)
+const NARR_END = 56.2;       // narration ends (narration seconds)
+const TOTAL = D + 60.6;      // film length in seconds
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const F = 'Vazir';
+
+const C = {
+  bg0:'#0b1020', bg1:'#141b33', ink:'#f4ede4', mute:'#9aa4bd',
+  red:'#e2434f', redD:'#8e1d2c', amber:'#f4a742', teal:'#3fe0c8',
+  slate:'#7d8bab', wall:'#6e1a28'
+};
+
+// ───────────────────────────── helpers ─────────────────────────────
+const clamp=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const p=(t,a,b)=>clamp((t-a)/(b-a));
+const eOut=x=>1-Math.pow(1-x,4);            // entrances
+const eIn=x=>x*x*x;                          // exits
+const eIO=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const eBack=x=>{const c=1.2;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);};
+// enter/exit envelope: in over [a,a+di], out over [b,b+do]
+const env=(t,a,b,di=.5,dout=.3)=>eOut(p(t,a,a+di))*(1-eIn(p(t,b,b+dout)));
+function mixHex(a,b,t){const pa=parseInt(a.slice(1),16),pb=parseInt(b.slice(1),16);
+  const r=Math.round(lerp(pa>>16,pb>>16,t)),g=Math.round(lerp(pa>>8&255,pb>>8&255,t)),bl=Math.round(lerp(pa&255,pb&255,t));
+  return `rgb(${r},${g},${bl})`;}
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
+function rnd(i){const s=Math.sin(i*127.1+311.7)*43758.5453;return s-Math.floor(s);}
+
+function text(str,x,y,size,{w=700,color=C.ink,alpha=1,align='center',dir='rtl',dy=0}={}){
+  if(alpha<=0.002) return;
+  ctx.save();ctx.globalAlpha*=alpha;ctx.fillStyle=color;
+  ctx.font=`${w} ${size}px ${F}`;ctx.direction=dir;ctx.textAlign=align;ctx.textBaseline='middle';
+  ctx.fillText(str,x,y+dy);ctx.restore();
+}
+function measure(str,size,w=700){ctx.save();ctx.font=`${w} ${size}px ${F}`;ctx.direction='rtl';const m=ctx.measureText(str).width;ctx.restore();return m;}
+// whole-line label in a pill (world or screen space)
+function pill(str,x,y,size,a,{bg='rgba(12,17,34,.78)',color=C.ink,stroke=null,w=700,rise=14}={}){
+  if(a<=0.002) return;
+  const k=eOut(clamp(a));const tw=measure(str,size,w);const ph=size*1.75,pw=tw+size*1.3;
+  ctx.save();ctx.globalAlpha*=a;ctx.translate(x,y+(1-k)*rise);
+  rr(-pw/2,-ph/2,pw,ph,ph/2);ctx.fillStyle=bg;ctx.fill();
+  if(stroke){ctx.lineWidth=size*.07;ctx.strokeStyle=stroke;ctx.stroke();}
+  ctx.restore();
+  text(str,x,y+(1-k)*rise,size,{w,color,alpha:a,dy:size*.06});
+}
+
+// ───────────────────────────── drawing primitives ─────────────────────────────
+function capsule(x,y,len,th,rot,open=0,alpha=1){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);ctx.rotate(rot);
+  const r=th/2, half=len/2, gap=open*len*.55;
+  // shadow glow
+  ctx.shadowColor='rgba(226,67,79,.35)';ctx.shadowBlur=40*(1-open);
+  // red half (left)
+  ctx.save();ctx.translate(-gap,0);ctx.rotate(-open*.5);
+  rr(-half,-r,half+2,th,[r,0,0,r]);
+  let g=ctx.createLinearGradient(0,-r,0,r);g.addColorStop(0,'#ff6b73');g.addColorStop(.45,C.red);g.addColorStop(1,'#7a1622');
+  ctx.fillStyle=g;ctx.fill();
+  ctx.shadowBlur=0;
+  rr(-half+r*.35,-r*.62,half*.75,r*.32,r*.16);ctx.fillStyle='rgba(255,255,255,.35)';ctx.fill();
+  ctx.restore();
+  // clear half (right) with granules
+  ctx.save();ctx.translate(gap,0);ctx.rotate(open*.5);ctx.shadowBlur=0;
+  rr(-2,-r,half+2,th,[0,r,r,0]);
+  g=ctx.createLinearGradient(0,-r,0,r);g.addColorStop(0,'rgba(255,255,255,.55)');g.addColorStop(1,'rgba(200,215,240,.22)');
+  ctx.fillStyle=g;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='rgba(255,255,255,.55)';ctx.stroke();
+  if(open<0.05){for(let i=0;i<14;i++){const gx=lerp(10,half-r*.6,rnd(i)),gy=lerp(-r*.55,r*.55,rnd(i+40));
+    ctx.beginPath();ctx.arc(gx,gy,th*.07,0,7);ctx.fillStyle=i%3?C.amber:'#ffd08a';ctx.fill();}}
+  ctx.restore();
+  ctx.restore();
+}
+
+function poly(x,y,r,n,rot=0){ctx.beginPath();for(let i=0;i<n;i++){const a=rot+i*2*Math.PI/n;ctx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a));}ctx.closePath();}
+
+// prodrug molecule: hexagon (active part) — bond — pentagon (lysine carrier)
+// cut: 0 bonded → 1 separated; act: amber→teal; lock: lock icon visibility; lockOpen: shackle lift
+function molecule(x,y,s,{rot=0,cut=0,act=0,lock=0,lockOpen=0,alpha=1,carrierAlpha=1,glow=0}={}){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);ctx.rotate(rot);
+  const hx=-s*1.05, px=s*1.05+cut*s*2.2, py=cut*s*1.2;
+  // bond
+  if(cut<1){ctx.save();ctx.globalAlpha*=1-cut;ctx.lineWidth=s*.16;ctx.strokeStyle='#e8dccb';ctx.lineCap='round';
+    ctx.beginPath();ctx.moveTo(hx+s*.62,0);ctx.lineTo(px-s*.55,py);ctx.stroke();ctx.restore();}
+  // carrier
+  ctx.save();ctx.globalAlpha*=carrierAlpha;poly(px,py,s*.62,5,-Math.PI/2+cut*1.2);
+  ctx.fillStyle=C.slate;ctx.fill();ctx.lineWidth=s*.08;ctx.strokeStyle='#b9c4dc';ctx.stroke();ctx.restore();
+  // active hexagon
+  const col=mixHex(C.amber,C.teal,act);
+  if(glow>0){ctx.save();ctx.shadowColor=C.teal;ctx.shadowBlur=s*1.4*glow;poly(hx,0,s*.78,6,0);ctx.fillStyle=col;ctx.fill();ctx.restore();}
+  poly(hx,0,s*.78,6,0);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=s*.08;ctx.strokeStyle=mixHex('#ffd79a','#b8fff4',act);ctx.stroke();
+  poly(hx,0,s*.42,6,0);ctx.lineWidth=s*.06;ctx.strokeStyle='rgba(255,255,255,.35)';ctx.stroke();
+  // lock on the bond
+  if(lock>0){const lx=(hx+s*.62+px-s*.55)/2, ly=py/2, k=eBack(clamp(lock)), ls=s*.36*k;
+    ctx.save();ctx.translate(lx,ly-s*.05);ctx.globalAlpha*=clamp(lock*1.5);
+    ctx.lineWidth=ls*.32;ctx.strokeStyle='#ffe2a8';ctx.lineCap='round';
+    ctx.beginPath();ctx.arc(0,-ls*.55-lockOpen*ls*.7,ls*.55,Math.PI,0);ctx.lineTo(ls*.55,-ls*.25-lockOpen*ls*.7+(lockOpen>0?0:0));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(-ls*.55,-ls*.55-lockOpen*ls*.7);ctx.lineTo(-ls*.55,-ls*.2);ctx.stroke();
+    rr(-ls*.85,-ls*.35,ls*1.7,ls*1.35,ls*.25);ctx.fillStyle='#f6c35a';ctx.fill();
+    ctx.beginPath();ctx.arc(0,ls*.2,ls*.18,0,7);ctx.fillStyle='#6b4a12';ctx.fill();
+    ctx.restore();}
+  ctx.restore();
+}
+
+function rbc(x,y,r,rot=0,alpha=1){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);ctx.rotate(rot);ctx.scale(1,.62);
+  let g=ctx.createRadialGradient(-r*.3,-r*.4,r*.1,0,0,r);g.addColorStop(0,'#ff7a7f');g.addColorStop(.6,C.red);g.addColorStop(1,'#7c1421');
+  ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fillStyle=g;ctx.fill();
+  g=ctx.createRadialGradient(0,0,0,0,0,r*.6);g.addColorStop(0,'rgba(90,10,20,.55)');g.addColorStop(1,'rgba(90,10,20,0)');
+  ctx.beginPath();ctx.ellipse(0,0,r*.58,r*.5,0,0,7);ctx.fillStyle=g;ctx.fill();
+  ctx.beginPath();ctx.arc(-r*.35,-r*.45,r*.18,0,7);ctx.fillStyle='rgba(255,255,255,.22)';ctx.fill();
+  ctx.restore();
+}
+
+function brain(x,y,s,act,alpha=1,t=0){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);
+  const col=mixHex('#4a5470','#ff8fb0',act);
+  if(act>0){ctx.save();ctx.shadowColor=C.teal;ctx.shadowBlur=90*act*(0.85+0.15*Math.sin(t*3));
+    ctx.beginPath();ctx.ellipse(0,0,s*1.05,s*.78,0,0,7);ctx.fillStyle=`rgba(63,224,200,${.18*act})`;ctx.fill();ctx.restore();}
+  ctx.beginPath();
+  for(let i=0;i<=120;i++){const a=i/120*Math.PI*2;const rr2=1+.07*Math.sin(a*11)+.03*Math.sin(a*5);
+    const px=Math.cos(a)*s*rr2, py=Math.sin(a)*s*.74*rr2*(a>0&&a<Math.PI? .92:1);ctx.lineTo(px,py);}
+  ctx.closePath();
+  const g=ctx.createLinearGradient(0,-s,0,s);g.addColorStop(0,mixHex('#6a7594','#ffc2d4',act));g.addColorStop(1,col);
+  ctx.fillStyle=g;ctx.fill();ctx.lineWidth=s*.035;ctx.strokeStyle=mixHex('#2c3350','#a33a62',act);ctx.stroke();
+  // folds
+  ctx.lineWidth=s*.03;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(0,-s*.7);ctx.bezierCurveTo(-s*.08,-s*.3,s*.08,0,0,s*.55);ctx.stroke();
+  const folds=[[-.6,-.3,-.25,-.45,-.2,-.1],[-.75,.15,-.45,0,-.3,.3],[.6,-.3,.25,-.45,.2,-.1],[.75,.15,.45,0,.3,.3],[-.5,.45,-.3,.3,-.12,.5],[.5,.45,.3,.3,.12,.5]];
+  for(const f of folds){ctx.beginPath();ctx.moveTo(f[0]*s,f[1]*s);ctx.quadraticCurveTo(f[2]*s,f[3]*s,f[4]*s,f[5]*s);ctx.stroke();}
+  ctx.restore();
+}
+
+function sun(x,y,r,alpha=1,t=0){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);
+  ctx.strokeStyle='#ffd27a';ctx.lineWidth=r*.14;ctx.lineCap='round';
+  for(let i=0;i<10;i++){const a=i/10*Math.PI*2+t*.3;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*1.35,Math.sin(a)*r*1.35);ctx.lineTo(Math.cos(a)*r*1.7,Math.sin(a)*r*1.7);ctx.stroke();}
+  ctx.shadowColor='#ffb347';ctx.shadowBlur=r;ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fillStyle='#ffc14f';ctx.fill();
+  ctx.restore();
+}
+
+function crossBadge(x,y,r,alpha=1){
+  ctx.save();ctx.globalAlpha*=alpha;ctx.translate(x,y);
+  ctx.beginPath();ctx.arc(0,0,r,0,7);ctx.fillStyle='rgba(63,224,200,.14)';ctx.fill();ctx.lineWidth=r*.07;ctx.strokeStyle=C.teal;ctx.stroke();
+  const a=r*.5,b=r*.17;rr(-b,-a,b*2,a*2,b*.4);ctx.fillStyle=C.teal;ctx.fill();rr(-a,-b,a*2,b*2,b*.4);ctx.fill();
+  ctx.restore();
+}
+
+// ───────────────────────────── camera ─────────────────────────────
+const CAM=[ // narration time, x, y, zoom
+  [-9 ,540,960 ,1.00],[9.6,540,960,1.04],[12.6,540,2880,.90],[19.2,540,2900,.93],
+  [20.5,540,3140,2.35],[28.9,540,3150,2.45],[30.6,540,2720,.84],[41.0,540,2860,.80],
+  [42.8,540,5830,1.00],[70,540,5830,1.05]];
+function cam(t){
+  for(let i=0;i<CAM.length-1;i++){const a=CAM[i],b=CAM[i+1];if(t<=b[0]){const k=eIO(p(t,a[0],b[0]));
+    // zoom interpolates in log space so moves feel even
+    return {x:lerp(a[1],b[1],k),y:lerp(a[2],b[2],k),z:Math.exp(lerp(Math.log(a[3]),Math.log(b[3]),k))};}}
+  const l=CAM[CAM.length-1];return {x:l[1],y:l[2],z:l[3]};
+}
+
+// ───────────────────────────── world data ─────────────────────────────
+const BRAIN={x:540,y:2150};
+const HERO={x:540,y:3150};
+const MOLS=[ // other molecules (target positions)
+  [320,2760],[770,2830],[300,3480],[790,3440],[630,3800],[380,3980],[760,4060],[470,2590]];
+const CAPSULE_END={x:540,y:3050};
+// constant-rate cleavage events (scene H)
+const EV0=35.1, EVDT=.72;
+function events(){const ev=[];for(let k=0;k<9;k++)ev.push({t:EV0+k*EVDT,m:k%MOLS.length});return ev;}
+const EVENTS=events();
+
+function molPos(i,t){const m=MOLS[i];const k=eOut(p(t,12.9,14.6));
+  const sx=lerp(CAPSULE_END.x,m[0],k), sy=lerp(CAPSULE_END.y,m[1],k);
+  return {x:sx+Math.sin(t*.9+i)*14, y:sy+Math.cos(t*.7+i*2)*16, rot:Math.sin(t*.5+i)*.4+i};}
+
+// ───────────────────────────── scenes (world) ─────────────────────────────
+function world(t){
+  // ── A/B: title zone ──
+  if(t<14){
+    const a=env(t,0.15,99,.7);
+    text('وایوانس',540,520,170,{w:850,alpha:a,dy:(1-eOut(p(t,.15,.85)))*40});
+    text('Vyvanse · lisdexamfetamine',540,650,36,{w:500,color:C.mute,alpha:env(t,.5,99,.6),dir:'ltr'});
+    pill('یک «پیش‌دارو»',540,1110,54,env(t,1.1,99,.5),{bg:'rgba(244,167,66,.16)',color:'#ffd08a',stroke:'rgba(244,167,66,.6)'});
+    pill('برای کنترل بیش‌فعالی',540,1225,44,env(t,3.0,99,.5),{bg:'rgba(255,255,255,.06)',color:C.ink});
+    // mood wave panel
+    const pa=env(t,4.4,99,.6);
+    if(pa>0){
+      ctx.save();ctx.globalAlpha*=pa;rr(110,1330,860,360,36);ctx.fillStyle='rgba(255,255,255,.04)';ctx.fill();
+      ctx.lineWidth=2;ctx.strokeStyle='rgba(255,255,255,.10)';ctx.stroke();ctx.restore();
+      const calm=eIO(p(t,8.4,9.8)), draw=eOut(p(t,5.6,7.4));
+      const col=mixHex(C.red,C.teal,calm);
+      ctx.save();ctx.globalAlpha*=pa;ctx.beginPath();
+      const N=200;for(let i=0;i<=N*draw;i++){const f=i/N;const xx=lerp(170,910,f);
+        const jag=Math.sin(f*Math.PI*5.2)*95+Math.sin(f*Math.PI*13)*22;
+        const yy=1540+lerp(jag,Math.sin(f*Math.PI*2)*10,calm);ctx.lineTo(xx,yy);}
+      ctx.lineWidth=8;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle=col;ctx.shadowColor=col;ctx.shadowBlur=18;ctx.stroke();ctx.restore();
+      text('محرک‌های قدیمی',900,1385,34,{align:'right',color:'#ff9aa2',alpha:pa*env(t,6.0,8.4,.4,.4)});
+      text('نوسانات خلقی',180,1385,34,{align:'left',color:'#ff9aa2',alpha:pa*env(t,7.0,8.4,.4,.4),w:600});
+      text('وایوانس',900,1385,34,{align:'right',color:C.teal,alpha:pa*env(t,9.0,99,.5)});
+      text('بدون نوسانات خلقی',180,1385,34,{align:'left',color:C.teal,alpha:pa*env(t,9.3,99,.5),w:600});
+    }
+  }
+  // ── vessel ──
+  const va=env(t,9.8,99,1.6);
+  if(va>0){
+    ctx.save();ctx.globalAlpha*=va;
+    let g=ctx.createLinearGradient(0,2380,0,2560);g.addColorStop(0,'rgba(120,20,40,0)');g.addColorStop(1,'rgba(120,20,40,.16)');
+    ctx.fillStyle=g;ctx.fillRect(130,2380,820,180);ctx.fillStyle='rgba(120,20,40,.16)';ctx.fillRect(130,2560,820,2000);
+    for(const wx of [90,950]){g=ctx.createLinearGradient(wx,0,wx+40,0);
+      g.addColorStop(0,wx<500?'#3a0c16':'#a83346');g.addColorStop(1,wx<500?'#a83346':'#3a0c16');
+      const gy=ctx.createLinearGradient(0,2380,0,2600);
+      ctx.fillStyle=g;rr(wx,2420,40,2150,20);ctx.fill();}
+    // flowing plasma specks
+    for(let i=0;i<40;i++){const x=lerp(170,910,rnd(i));const y=4560-((rnd(i+9)*2100+t*120*(0.6+rnd(i+3)))%2140);
+      ctx.beginPath();ctx.arc(x,y,3+rnd(i+5)*4,0,7);ctx.fillStyle='rgba(255,170,170,.10)';ctx.fill();}
+    ctx.restore();
+    text('جریان خون',540,4640,34,{color:'#ff9aa2',alpha:va*.8,w:600});
+  }
+  // decorative red cells drifting up the vessel (dim during the close-up)
+  const da=env(t,12.4,99,1.2)*(1-.85*env(t,19.4,29.2,.8,1.0));
+  if(da>0) for(let i=0;i<7;i++){const x=lerp(220,860,rnd(i+21));const y=4500-((rnd(i+30)*2000+t*70)%2050);
+    if(Math.abs(y-HERO.y)<120&&Math.abs(x-HERO.x)<200)continue;
+    rbc(x,y,62,Math.sin(t*.6+i)*.5,da*.9);}
+  // ── brain ──
+  const ba=env(t,13.3,99,.9);
+  if(ba>0){
+    let act=eOut(p(t,33.4,34.6));
+    // during scene H each arriving dose keeps the level steady
+    for(const e of EVENTS){const k=p(t,e.t+1.5,e.t+1.9);act+= .12*Math.sin(Math.PI*k);}
+    act=clamp(act,0,1.08);
+    brain(BRAIN.x,BRAIN.y,200,clamp(act),ba,t);
+    pill('مغز',BRAIN.x,BRAIN.y+190,34,ba*(1-env(t,30,99,.4)),{bg:'rgba(255,255,255,.07)',color:C.mute});
+    pill('بدون اثر روی مغز',BRAIN.x,BRAIN.y,34,env(t,17.0,19.6,.5,.4),{bg:'rgba(125,139,171,.25)',color:C.ink});
+    pill('تمرکز فعال شد',BRAIN.x,BRAIN.y+190,36,env(t,34.0,99,.5),{bg:'rgba(63,224,200,.18)',color:C.teal,stroke:'rgba(63,224,200,.5)'});
+  }
+  // ── capsule travelling into the blood ──
+  if(t<14.2){
+    const k=eIO(p(t,10.0,12.8));
+    const cx=lerp(540,CAPSULE_END.x,k)+Math.sin(k*Math.PI)*-60, cy=lerp(880+Math.sin(t*1.6)*10,CAPSULE_END.y,k);
+    const open=eOut(p(t,12.9,13.8));
+    const sc=lerp(1,.6,k);
+    capsule(cx,cy,400*sc,160*sc,lerp(-.35,Math.PI/2*.15,k)+k*1.2,open,1-p(t,13.4,14.1));
+  }
+  // ── molecules ──
+  if(t>12.9){
+    const near=env(t,19.4,29.0,.6,.8); // dim others during close-up
+    for(let i=0;i<MOLS.length;i++){
+      const ev=EVENTS.filter(e=>e.m===i)[0];
+      const q=molPos(i,t);
+      let cut=0,act=0,carA=1,x=q.x,y=q.y,alpha=env(t,12.9,99,.4)*(1-near*.8);
+      // neutral molecules nudge toward the brain and drift back (no effect)
+      if(i===0||i===7){const b=Math.sin(Math.PI*p(t,16.6,18.6));y-=b*140;x+= (BRAIN.x-x)*b*.25;}
+      if(ev&&t>ev.t){const k=p(t,ev.t,ev.t+.35);cut=eOut(k);act=eOut(k);carA=1-p(t,ev.t+.3,ev.t+1.1);
+        const f=eIO(p(t,ev.t+.35,ev.t+1.8));
+        // active part rises to the brain; carrier stays behind and fades
+        if(f>0){molecule(x,y,30,{rot:q.rot,cut:1,act:1,alpha,carrierAlpha:carA,lock:0});
+          const hx=lerp(x-30,BRAIN.x+(rnd(i)-.5)*120,f),hy=lerp(y,BRAIN.y+90,f);
+          ctx.save();ctx.globalAlpha*=alpha*(1-p(t,ev.t+1.6,ev.t+1.9));
+          ctx.shadowColor=C.teal;ctx.shadowBlur=24;poly(hx,hy,24,6,0);ctx.fillStyle=C.teal;ctx.fill();ctx.restore();
+          // flash at the break
+          const fl=p(t,ev.t,ev.t+.45);if(fl<1){ctx.save();ctx.globalAlpha*=(1-fl)*alpha;ctx.beginPath();ctx.arc(x,y,20+fl*70,0,7);ctx.lineWidth=5;ctx.strokeStyle='#fff3c4';ctx.stroke();ctx.restore();}
+          continue;}
+      }
+      molecule(x,y,36,{rot:q.rot,cut,act,alpha,carrierAlpha:carA,lock:env(t,20.4,29,.6,.8)*.9});
+    }
+    // red cells that do the cutting in scene H
+    for(const e of EVENTS){const a=env(t,e.t-.9,e.t+.25,.5,.6);if(a<=0)continue;const q=molPos(e.m,e.t);
+      const k=eIO(p(t,e.t-.9,e.t+.9));rbc(lerp(q.x+260,q.x-200,k),q.y-55+Math.sin(k*3)*10,54,.3,a);}
+    // hero molecule
+    const lockA=eBack(p(t,20.3,21.0)), lockOpen=eOut(p(t,27.4,28.1));
+    const cutK=eOut(p(t,28.2,28.8)), actK=eOut(p(t,28.4,29.4));
+    const fly=eIO(p(t,30.6,33.8));
+    const hb={x:HERO.x+Math.sin(t*.8)*6*(1-fly),y:HERO.y+Math.cos(t*.6)*8*(1-fly)};
+    const ha=env(t,12.9,99,.4);
+    const hpos=molPos(0,t); const enter=eOut(p(t,12.9,14.6));
+    const bx=lerp(CAPSULE_END.x,hb.x,enter), by=lerp(CAPSULE_END.y,hb.y,enter);
+    if(fly<=0){
+      molecule(bx,by,30,{cut:cutK,act:actK,lock:(t<28.6?lockA:0)*(1-p(t,28.2,28.6)),lockOpen,glow:actK,alpha:ha,carrierAlpha:1-p(t,29.2,30.4)});
+    } else {
+      molecule(bx,by,30,{cut:1,act:1,alpha:ha*(1-p(t,30.4,31)),carrierAlpha:0});
+      const hx=lerp(bx-31,BRAIN.x,fly),hy=lerp(by,BRAIN.y+60,fly)-Math.sin(fly*Math.PI)*0;
+      const tail=12;for(let j=tail;j>=0;j--){const ff=clamp(fly-j*.012);const tx=lerp(bx-31,BRAIN.x,ff),ty=lerp(by,BRAIN.y+60,ff);
+        ctx.save();ctx.globalAlpha*=(1-j/tail)*.35*(1-p(t,33.6,34));ctx.beginPath();ctx.arc(tx,ty,18*(1-j/tail),0,7);ctx.fillStyle=C.teal;ctx.fill();ctx.restore();}
+      ctx.save();ctx.globalAlpha*=1-p(t,33.7,34.1);ctx.shadowColor=C.teal;ctx.shadowBlur=40;poly(hx,hy,24,6,0);ctx.fillStyle=C.teal;ctx.fill();ctx.restore();
+    }
+    // the cutting red cell (hero)
+    const ra=env(t,24.0,29.6,.6,.8);
+    if(ra>0){const k1=eOut(p(t,24.0,26.8)),k2=eIn(p(t,28.6,30.4));
+      const rx=lerp(lerp(1000,HERO.x+20,k1),-150,k2), ry=lerp(lerp(2930,HERO.y-92,k1),2960,k2);
+      rbc(rx,ry,74,lerp(.5,0,k1)+k2*.4,ra);}
+    // break flash
+    const fl=p(t,28.2,28.9);if(fl>0&&fl<1){ctx.save();ctx.globalAlpha*=1-fl;ctx.beginPath();ctx.arc(HERO.x,HERO.y,10+fl*120,0,7);ctx.lineWidth=6*(1-fl)+1;ctx.strokeStyle='#fff3c4';ctx.stroke();ctx.restore();}
+    // close-up labels (world space, close to camera zoom 2.4)
+    pill('ساختار قفل‌شده',HERO.x,HERO.y+95,21,env(t,20.6,24.0,.5,.3),{bg:'rgba(246,195,90,.16)',color:'#ffe2a8',stroke:'rgba(246,195,90,.5)'});
+    pill('در خون بی‌اثر',HERO.x,HERO.y+95,21,env(t,22.2,24.0,.5,.3)*0,{});
+    pill('گلبول قرمز = کلید',HERO.x+60,HERO.y-175,21,env(t,24.9,27.4,.5,.3),{bg:'rgba(226,67,79,.2)',color:'#ffb3b8',stroke:'rgba(226,67,79,.5)'});
+    pill('پیوند شیمیایی شکست',HERO.x,HERO.y+95,21,env(t,28.3,30.2,.4,.3),{bg:'rgba(255,243,196,.12)',color:'#fff3c4'});
+    pill('مادهٔ فعال',HERO.x-35,HERO.y-62,19,env(t,29.4,30.5,.4,.3),{bg:'rgba(63,224,200,.18)',color:C.teal});
+    pill('خنثی و بی‌اثر',540,2620,36,env(t,15.0,19.2,.5,.4),{bg:'rgba(125,139,171,.25)'});
+  }
+  // ── I/J: result zone ──
+  if(t>40.5) resultZone(t);
+}
+
+function resultZone(t){
+  ctx.save();ctx.translate(0,600);resultBody(t);ctx.restore();
+}
+function resultBody(t){
+  const qa=env(t,42.0,48.0,.7,.5);
+  sun(540,4860-eOut(p(t,42.4,43.6))*40,52,qa,t);
+  text('صبح',540,4975,34,{color:'#ffd27a',alpha:qa,w:600});
+  capsule(540,5150,230,92,-.3+Math.sin(t)*.05,0,env(t,43.2,48.0,.6,.5));
+  text('فقط یک کپسول',540,5300,58,{alpha:env(t,44.2,48.0,.6,.5)});
+  text('نتیجه؟',540,5470,120,{w:850,color:C.amber,alpha:env(t,46.2,48.0,.4,.5),dy:(1-eOut(p(t,46.2,46.9)))*30});
+  // graph
+  const ga=env(t,48.0,99,.6);
+  if(ga<=0) return;
+  const X0=150,X1=940,Y0=5600,Y1=4900;
+  ctx.save();ctx.globalAlpha*=ga;
+  ctx.lineWidth=4;ctx.strokeStyle='rgba(244,237,228,.55)';ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(X0,Y1-20);ctx.lineTo(X0,Y0);ctx.lineTo(X1+20,Y0);ctx.stroke();
+  for(let i=1;i<=5;i++){const x=lerp(X0,X1,i/5);ctx.beginPath();ctx.moveTo(x,Y0);ctx.lineTo(x,Y0+14);ctx.stroke();}
+  ctx.restore();
+  text('غلظت در خون',X0,Y1-60,30,{align:'left',color:C.mute,alpha:ga,w:600});
+  text('صبح',X0+10,Y0+50,32,{color:'#ffd27a',alpha:ga,w:600});
+  text('عصر',X1,Y0+50,32,{color:'#ffb08a',alpha:ga,w:600});
+  text('زمان',(X0+X1)/2,Y0+50,30,{color:C.mute,alpha:ga,w:500});
+  // moving sun along the day
+  const sk=eIO(p(t,51.0,55.2));
+  sun(lerp(X0+60,X1-20,sk),Y1-150-Math.sin(sk*Math.PI)*60,26,ga*env(t,50.8,99,.5),t);
+  // spike: sudden shock (old stimulant pattern)
+  const sd=eOut(p(t,48.6,50.2)), dim=1-.6*p(t,51.0,51.8);
+  ctx.save();ctx.globalAlpha*=ga*dim;ctx.beginPath();
+  for(let i=0;i<=200*sd;i++){const f=i/200;const y=Math.exp(-Math.pow((f-.17)/.055,2))*.95;ctx.lineTo(lerp(X0,X1,f),lerp(Y0,Y1,y));}
+  ctx.lineWidth=7;ctx.strokeStyle=C.red;ctx.shadowColor=C.red;ctx.shadowBlur=14;ctx.lineJoin='round';ctx.stroke();ctx.restore();
+  pill('شوک ناگهانی',X0+300,Y1+70,32,env(t,50.0,99,.4)*dim+0,{bg:'rgba(226,67,79,.2)',color:'#ffb3b8'});
+  // plateau: gentle, steady focus until evening
+  const pd=eIO(p(t,51.0,55.0));
+  const sig=(x,c,w)=>1/(1+Math.exp(-(x-c)/w));
+  ctx.save();ctx.globalAlpha*=ga;
+  const pts=[];for(let i=0;i<=240*pd;i++){const f=i/240;pts.push([lerp(X0,X1,f),lerp(Y0,Y1,.58*sig(f,.13,.035)*(1-sig(f,.9,.03)))]);}
+  if(pts.length>1){
+    ctx.beginPath();ctx.moveTo(pts[0][0],Y0);for(const q of pts)ctx.lineTo(q[0],q[1]);ctx.lineTo(pts[pts.length-1][0],Y0);ctx.closePath();
+    const g=ctx.createLinearGradient(0,Y1,0,Y0);g.addColorStop(0,'rgba(63,224,200,.30)');g.addColorStop(1,'rgba(63,224,200,0)');ctx.fillStyle=g;ctx.fill();
+    ctx.beginPath();for(const q of pts)ctx.lineTo(q[0],q[1]);ctx.lineWidth=9;ctx.strokeStyle=C.teal;ctx.shadowColor=C.teal;ctx.shadowBlur=20;ctx.lineJoin='round';ctx.stroke();}
+  ctx.restore();
+  pill('تمرکز ملایم و پایدار',600,lerp(Y0,Y1,.58)-60,38,env(t,52.0,99,.5),{bg:'rgba(63,224,200,.16)',color:C.teal,stroke:'rgba(63,224,200,.5)'});
+  pill('تا عصر',X1-120,lerp(Y0,Y1,.3),30,env(t,54.3,99,.4),{bg:'rgba(255,176,138,.16)',color:'#ffc7a6'});
+}
+
+// ───────────────────────────── screen-space overlays ─────────────────────────────
+const CAPS=[
+ [0.0,3.0,'داروی وایوانس یک «پیش‌دارو»'],[3.0,4.4,'برای کنترل بیش‌فعالی'],[4.4,6.0,'است که برخلاف'],
+ [6.0,7.0,'محرک‌های قدیمی،'],[7.0,10.0,'نوسانات خلقی ایجاد نمی‌کند.'],[10.0,11.6,'کپسولی را تصور کنید'],
+ [11.6,14.0,'که وارد جریان خون می‌شود.'],[14.0,15.0,'مولکول‌های این دارو'],[15.0,17.0,'کاملاً خنثی بوده و'],
+ [17.0,19.0,'اثری روی مغز ندارند،'],[19.0,20.3,'چون پیش‌دارو ساختاری'],[20.3,22.0,'قفل‌شده دارد و فعلاً'],
+ [22.0,24.0,'در خون بی‌اثر است.'],[24.0,25.0,'کلید این قفل'],[25.0,27.0,'گلبول‌های قرمزند'],
+ [27.0,28.0,'که پیوند شیمیایی'],[28.0,30.0,'دارو را می‌شکنند.'],[30.0,32.0,'حالا مادهٔ فعال'],
+ [32.0,33.0,'آزاد شده و به'],[33.0,35.0,'سمت مغز می‌رود.'],[35.0,36.0,'سرعت تجزیه توسط'],
+ [36.0,38.0,'گلبول‌ها ثابت است،'],[38.0,40.0,'پس دارو قطره‌قطره'],[40.0,41.0,'ترشح می‌شود.'],
+ [41.0,43.0,'پس با در نظر گرفتن'],[43.0,44.0,'این مکانیسم دقیق،'],[44.0,46.0,'نتیجهٔ مصرف تنها یک'],
+ [46.0,48.0,'کپسول در صبح چیست؟'],[48.0,50.0,'بیمار به‌جای تجربهٔ'],[50.0,51.0,'شوک ناگهانی،'],
+ [51.0,54.0,'تمرکزی ملایم و کاملاً'],[54.0,55.0,'پایدار را تا عصر'],[55.0,56.3,'به دست می‌آورد.']];
+
+function captions(t){
+  for(const [a,b,s] of CAPS){
+    if(t<a||t>b) continue;
+    const k=eOut(p(t,a,a+.2)), o=1-eIn(p(t,b-.12,b));
+    const al=k*o; if(al<=0) continue;
+    const size=50,tw=measure(s,size,700),pw=tw+70,ph=96,y=1690+(1-k)*16;
+    ctx.save();ctx.globalAlpha=al;rr(540-pw/2,y-ph/2,pw,ph,26);ctx.fillStyle='rgba(8,11,22,.78)';ctx.fill();
+    ctx.lineWidth=2;ctx.strokeStyle='rgba(255,255,255,.08)';ctx.stroke();ctx.restore();
+    text(s,540,y,size,{alpha:al,dy:3});
+  }
+}
+
+// steady-rate meter during scene H
+function rateMeter(t){
+  const a=env(t,35.2,41.6,.5,.5);if(a<=0)return;
+  const y=1460;ctx.save();ctx.globalAlpha=a;rr(150,y-80,780,170,34);ctx.fillStyle='rgba(8,11,22,.75)';ctx.fill();ctx.restore();
+  text('آزادسازی آهسته و یکنواخت',540,y-32,38,{alpha:a,color:C.teal});
+  for(let k=0;k<EVENTS.length;k++){const x=lerp(830,250,k/(EVENTS.length-1));const on=p(t,EVENTS[k].t,EVENTS[k].t+.2);
+    ctx.save();ctx.globalAlpha=a;
+    // droplet
+    ctx.translate(x,y+38);ctx.beginPath();ctx.moveTo(0,-20);ctx.bezierCurveTo(14,-2,14,14,0,16);ctx.bezierCurveTo(-14,14,-14,-2,0,-20);
+    ctx.fillStyle=on>0?mixHex('#2a3350',C.teal,on):'#2a3350';ctx.fill();ctx.restore();}
+}
+
+// disclaimer card ↔ corner tag (one object for the whole film)
+function disclaimer(T){
+  const t=T-D;
+  // morph: 0 = full card, 1 = corner tag
+  const toTag=eIO(p(t,-.7,0)), toCard=eIO(p(t,NARR_END+.1,NARR_END+.9));
+  const m=clamp(toTag-toCard);
+  const outro=t>NARR_END;
+  const appear=eOut(p(T,.05,.7));
+  const fadeEnd=1-p(T,TOTAL-.5,TOTAL);
+  // card rect vs tag rect
+  const cw=lerp(900,700,m), ch=lerp(outro?760:640,74,m), cy=lerp(960,112,m);
+  ctx.save();ctx.globalAlpha=appear*fadeEnd;
+  if(m<1){ // dim world behind the card
+    ctx.fillStyle=`rgba(6,9,18,${.78*(1-m)})`;ctx.fillRect(0,0,W,H);}
+  ctx.translate(540,cy+(1-appear)*30);
+  rr(-cw/2,-ch/2,cw,ch,lerp(48,37,m));
+  ctx.fillStyle=`rgba(${Math.round(lerp(20,10,m))},${Math.round(lerp(28,16,m))},${Math.round(lerp(52,32,m))},${lerp(.97,.72,m)})`;ctx.fill();
+  ctx.lineWidth=lerp(3,2,m);ctx.strokeStyle=`rgba(63,224,200,${lerp(.55,.45,m)})`;ctx.stroke();
+  ctx.restore();
+  const big=(1-p(m,0,.35))*appear*fadeEnd, small=p(m,.65,1)*fadeEnd;
+  if(big>0){
+    if(!outro){
+      crossBadge(540,770,92,big);
+      text('این پست آموزشی است',540,935,64,{w:850,alpha:big});
+      text('مصرف هر دارو، از جمله وایوانس،',540,1045,44,{w:500,color:C.mute,alpha:big});
+      text('فقط با تجویز پزشک',540,1120,58,{w:800,color:C.teal,alpha:big});
+    } else {
+      const oa=big*env(T-D,NARR_END+.6,99,.6);
+      crossBadge(540,700,92,oa);
+      text('این پست صرفاً آموزشی است',540,865,62,{w:850,alpha:oa});
+      text('و جای مشاوره با پزشک را نمی‌گیرد.',540,950,42,{w:500,color:C.mute,alpha:oa});
+      text('مصرف فقط با تجویز پزشک',540,1090,60,{w:800,color:C.teal,alpha:env(T-D,NARR_END+1.0,99,.6)*big});
+      text('از مصرف خودسرانه پرهیز کنید.',540,1185,40,{w:500,color:'#ffb3b8',alpha:env(T-D,NARR_END+1.4,99,.6)*big});
+    }
+  }
+  if(small>0){
+    crossBadge(540-300,112,22,small);
+    text('آموزشی  •  مصرف فقط با تجویز پزشک',540+20,112,32,{w:600,alpha:small,dy:2});
+  }
+}
+
+// ───────────────────────────── frame ─────────────────────────────
+function render(T){
+  const t=T-D;
+  // background
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,C.bg1);g.addColorStop(1,C.bg0);
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  const rg=ctx.createRadialGradient(540,700,50,540,800,1100);rg.addColorStop(0,'rgba(63,224,200,.05)');rg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=rg;ctx.fillRect(0,0,W,H);
+  // world through the one camera
+  const c=cam(t);
+  ctx.save();ctx.translate(W/2,H/2);ctx.scale(c.z,c.z);ctx.translate(-c.x,-c.y);
+  world(t);
+  ctx.restore();
+  rateMeter(t);
+  if(t>-.1&&t<NARR_END+.3) captions(t);
+  disclaimer(T);
+}
+
+window.TOTAL=TOTAL;window.FPS=FPS;window.render=render;
+window.ready=(async()=>{
+  const ff=new FontFace(F,'url(Vazirmatn-VF.woff2)',{weight:'100 900'});
+  document.fonts.add(await ff.load());await document.fonts.ready;
+  render(0);return true;})();
+// preview mode: ?play
+if(location.search.includes('play')){window.ready.then(()=>{const s=performance.now();(function loop(){render(((performance.now()-s)/1000)%TOTAL);requestAnimationFrame(loop);})();});}
+</script>
+</body>
+</html>
