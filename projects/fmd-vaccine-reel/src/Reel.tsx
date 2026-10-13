@@ -1,10 +1,11 @@
 /*
  * FMD vaccine reel (9:16, 82 s), summarising "راهنمای واکسن‌های تب برفکی".
- * Music first: shur-pulse.mp3, 120 BPM, 1 bar = 2 s. Every section change is a whip pan
+ * Music first: music/compose_lab_pulse.py, 120 BPM, 1 bar = 2 s. Every section change is a whip pan
  * peaking on a downbeat; the camera travels left (RTL), so layers leave to the right.
  *
- * Bar map: 1-4 hook | 5-8 six criteria | 9-12 #1 | 13-16 #2 | 17-20 #3 | 21-24 #4
- *          25-28 #5 (breakdown) | 29-32 #6 | 33-36 verdict | 37-41 end card (hit on bar 40)
+ * Timed to the Persian voice-over (public/audio/mix.wav), still on the 120 BPM grid:
+ * 0-10 hook | 10-16 six criteria | 16-76 criteria #1-#6, 10 s each | 76-86 verdict
+ * 86-96 end card (final hit at 92 s)
  */
 import React from 'react';
 import {AbsoluteFill, Audio, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
@@ -12,9 +13,9 @@ import {FA} from './fonts';
 import {Antibody, Coins, Cow, Helix, Lock, Magnifier, Shield, Syringe, Vial, Virus} from './icons';
 import {BlurDefs, Box, C, clamp, enter, Fa, faNum, H, IN, leave, mix, pop, pulse, remap, sp, W, whip, Words} from './kit';
 
-export const REEL_SECONDS = 82;
+export const REEL_SECONDS = 96;
 
-const WHIPS = [8, 16, 24, 32, 40, 48, 56, 64, 72];
+const WHIPS = [10, 16, 26, 36, 46, 56, 66, 76, 86];
 
 function layer(t: number, tin: number | null, tout: number | null) {
 	const a = tin === null ? {p: 1, blur: 0, scale: 1} : whip(t, tin);
@@ -140,7 +141,7 @@ const Grid: React.FC<{t: number}> = ({t}) => {
 				const x = col === 0 ? 1080 - 60 - cw : 60;
 				const y = 520 + row * (ch + 40);
 				const p = sp(t, 9.0 + i * 0.5);
-				const lit = i === 0 ? clamp(remap(t, 14, 14.4)) : 0;
+				const lit = i === 0 ? clamp(remap(t, 13.4, 13.8)) : 0;
 				return (
 					<Box
 						key={i}
@@ -569,13 +570,13 @@ const Ill6: React.FC<{u: number}> = ({u}) => {
 
 /* ---------------------------------------------------------------- progress (16-64 s) */
 const Progress: React.FC<{t: number}> = ({t}) => {
-	const vis = enter(t, 16.1) * (1 - leave(t, 63.75));
+	const vis = enter(t, 16.1) * (1 - leave(t, 75.75));
 	if (vis <= 0) return null;
 	return (
 		<Box x={60} y={130} w={960} h={14} style={{opacity: vis}}>
 			{[0, 1, 2, 3, 4, 5].map((i) => {
-				const s = 16 + i * 8;
-				const f = clamp(remap(t, s, s + 8));
+				const s = 16 + i * 10;
+				const f = clamp(remap(t, s, s + 10));
 				const segW = 150;
 				const x = 960 - (i + 1) * segW - i * 12; // fills from the right
 				return (
@@ -648,64 +649,64 @@ const EndCard: React.FC<{t: number}> = ({t}) => {
 
 /* ---------------------------------------------------------------- film */
 const SECTIONS: {from: number; to: number | null; render: (t: number) => React.ReactNode}[] = [
-	{from: 0, to: 8, render: (t) => <Hook t={t} />},
-	{from: 8, to: 16, render: (t) => <Grid t={t} />},
+	{from: 0, to: 10, render: (t) => <Hook t={t} />},
+	{from: 10, to: 16, render: (t) => <Grid t={t - 2} />},
 	{
 		from: 16,
-		to: 24,
+		to: 26,
 		render: (t) => (
-			<Criterion t={t} start={16} n={1} title="متوقف کردن شیوع" sub="پیشگیری در برابر تب برفکی" fact="واکسن مؤثر [زنجیره‌ی انتقال] را می‌شکند و از گله و سرمایه‌ی دامدار محافظت می‌کند.">
+			<Criterion t={t} start={16} factAt={2.6} n={1} title="متوقف کردن شیوع" sub="پیشگیری در برابر تب برفکی" fact="واکسن مؤثر [زنجیره‌ی انتقال] را می‌شکند و از گله و سرمایه‌ی دامدار محافظت می‌کند.">
 				{(u) => <Ill1 u={u} />}
 			</Criterion>
 		),
 	},
 	{
-		from: 24,
-		to: 32,
+		from: 26,
+		to: 36,
 		render: (t) => (
-			<Criterion t={t} start={24} n={2} title="تطابق با سویه‌ها" sub="شناخت الگوی اپیدمیولوژیک منطقه" fact="واکسن باید با [سویه‌های در گردش] منطقه، ترکیب آنتی‌ژنی منطبق داشته باشد.">
+			<Criterion t={t} start={26} factAt={3.0} n={2} title="تطابق با سویه‌ها" sub="شناخت الگوی اپیدمیولوژیک منطقه" fact="واکسن باید با [سویه‌های در گردش] منطقه، ترکیب آنتی‌ژنی منطبق داشته باشد.">
 				{(u) => <Ill2 u={u} />}
 			</Criterion>
 		),
 	},
 	{
-		from: 32,
-		to: 40,
+		from: 36,
+		to: 46,
 		render: (t) => (
-			<Criterion t={t} start={32} n={3} title="توان ایمنی‌زایی" sub="ماندگاری ایمنی در میدان" fact="کیفیت واقعی با [آزمون‌های میدانی] و ارزیابی [تیتر آنتی‌بادی] ثابت می‌شود.">
+			<Criterion t={t} start={36} factAt={3.0} n={3} title="توان ایمنی‌زایی" sub="ماندگاری ایمنی در میدان" fact="کیفیت واقعی با [آزمون‌های میدانی] و ارزیابی [تیتر آنتی‌بادی] ثابت می‌شود.">
 				{(u) => <Ill3 u={u} />}
 			</Criterion>
 		),
 	},
 	{
-		from: 40,
-		to: 48,
+		from: 46,
+		to: 56,
 		render: (t) => (
-			<Criterion t={t} start={40} n={4} title="عاری بودن از NSP" sub="خلوص از پروتئین‌های غیرساختاری" fact="واکسن خالص، تشخیص [دام واکسینه] از [دام آلوده] را ممکن می‌کند.">
+			<Criterion t={t} start={46} factAt={3.3} n={4} title="عاری بودن از NSP" sub="خلوص از پروتئین‌های غیرساختاری" fact="واکسن خالص، تشخیص [دام واکسینه] از [دام آلوده] را ممکن می‌کند.">
 				{(u) => <Ill4 u={u} />}
 			</Criterion>
 		),
 	},
 	{
-		from: 48,
-		to: 56,
+		from: 56,
+		to: 66,
 		render: (t) => (
-			<Criterion t={t} start={48} n={5} title="سرم‌ها و ایمنی زیستی" sub="کیفیت مواد اولیه‌ی زیستی" fact="ایمنی و منشأ [مواد اولیه]، تعیین‌کننده‌ی [ایمنی زیستی] واکسن است.">
+			<Criterion t={t} start={56} factAt={3.6} n={5} title="سرم‌ها و ایمنی زیستی" sub="کیفیت مواد اولیه‌ی زیستی" fact="ایمنی و منشأ [مواد اولیه]، تعیین‌کننده‌ی [ایمنی زیستی] واکسن است.">
 				{(u) => <Ill5 u={u} />}
 			</Criterion>
 		),
 	},
 	{
-		from: 56,
-		to: 64,
+		from: 66,
+		to: 76,
 		render: (t) => (
-			<Criterion t={t} start={56} n={6} title="کیفیت در برابر هزینه" sub="انتخاب هوشمندانه‌ی واکسن" fact="پوشش آنتی‌ژنی، تعداد دوز و کیفیت ساخت را بسنجید؛ [نه فقط قیمت] را.">
+			<Criterion t={t} start={66} factAt={3.5} n={6} title="کیفیت در برابر هزینه" sub="انتخاب هوشمندانه‌ی واکسن" fact="پوشش آنتی‌ژنی، تعداد دوز و کیفیت ساخت را بسنجید؛ [نه فقط قیمت] را.">
 				{(u) => <Ill6 u={u} />}
 			</Criterion>
 		),
 	},
-	{from: 64, to: 72, render: (t) => <Verdict t={t} />},
-	{from: 72, to: null, render: (t) => <EndCard t={t} />},
+	{from: 76, to: 86, render: (t) => <Verdict t={t - 12} />},
+	{from: 86, to: null, render: (t) => <EndCard t={t - 14} />},
 ];
 
 export const Reel: React.FC = () => {
@@ -714,8 +715,7 @@ export const Reel: React.FC = () => {
 	const t = frame / fps;
 	return (
 		<AbsoluteFill style={{background: C.bg0, overflow: 'hidden'}}>
-			<Audio src={staticFile('music/shur-pulse.mp3')} volume={(f) => 0.9 * clamp(1 - remap(f / fps, 80.5, 82))} />
-			<Audio src={staticFile('music/whooshes.mp3')} volume={0.55} />
+			<Audio src={staticFile('audio/mix.wav')} />
 			<Background t={t} />
 			{SECTIONS.map((s, i) => (
 				<Layer key={i} id={`l${i}`} t={t} tin={s.from === 0 ? null : s.from} tout={s.to}>
