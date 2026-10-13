@@ -640,7 +640,7 @@ const EndCard: React.FC<{t: number}> = ({t}) => {
 				<Words text="تهیه‌شده توسط" t={t} at={73.3} size={52} weight={500} color={C.mint} />
 			</Box>
 			<Box x={40} y={1060} w={1000} style={{transform: `scale(${(1 + 0.06 * hit).toFixed(4)})`, textShadow: `0 0 ${(40 * glow).toFixed(1)}px rgba(95,225,255,0.65)`}}>
-				<Words text="شرکت ویرا واکسن شایا" t={t} at={74.0} size={104} weight={900} stagger={0.12} />
+				<Words text="شرکت ویراواکسن شایا" t={t} at={74.0} size={104} weight={900} stagger={0.12} />
 			</Box>
 			<Box x={240} y={1290} w={600} h={4} style={{background: `linear-gradient(to left, rgba(255,194,75,0), ${C.amber}, rgba(255,194,75,0))`, transform: `scaleX(${IN(remap(t, 75.2, 76.2))})`}} />
 		</AbsoluteFill>
