@@ -1,0 +1,22 @@
+{
+  "name": "fmd-vaccine-reel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Instagram reel (9:16) summarising the FMD vaccine selection guide, for Vira Vaccine Shaya",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Reel out/fmd-vaccine-reel.mp4"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.530",
+    "@remotion/cli": "4.0.530",
+    "@remotion/renderer": "4.0.530",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.530"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "typescript": "5.9.2"
+  }
+}
