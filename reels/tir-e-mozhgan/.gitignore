@@ -1,0 +1,4 @@
+# the song and renders stay out of git (copyrighted music, large files)
+audio/
+*.mp4
+*.wav

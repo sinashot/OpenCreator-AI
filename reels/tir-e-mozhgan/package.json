@@ -1,0 +1,13 @@
+{
+  "name": "tir-e-mozhgan-reel",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "http-server -p 8765 -s .",
+    "render": "node render.mjs tir-e-mozhgan.mp4"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "playwright": "^1.56.1"
+  }
+}
