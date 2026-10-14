@@ -4,3 +4,6 @@
 
 - `chatgpt-roast.mp4` — خروجی نهایی (‎-14 LUFS)
 - `src/` — کد انیمیشن، رندر و موسیقی
+
+- `reels-cover.png` — کاور ریلز با محدوده‌ی امن متن (x ۹۰ تا ۹۹۰، y ۳۰۰ تا ۱۶۲۰)
+- `reels-cover-safezone-guides.png` — همان کاور با خطوط راهنما
