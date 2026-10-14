@@ -21,7 +21,8 @@ const P=[
  [27.43,28.32,'برو حال کن'],
 ];
 function wt(pi,wi){const [a,b,s]=P[pi];const ws=s.split(' ');const tot=ws.reduce((n,w)=>n+w.length,0)+ws.length-1;let c=0;for(let i=0;i<wi;i++)c+=ws[i].length+1;return VO+a+(b-a)*c/tot;}
-const CUT1=23.5, CUT2=27.85, DUR=30;
+const CUT1=23.5, CUT2=27.5, DUR=32;
+const TAP=CUT2+1.45; // the follow button gets pressed
 
 // ---------- easing ----------
 function bez(x1,y1,x2,y2){return x=>{if(x<=0)return 0;if(x>=1)return 1;let t=x;for(let i=0;i<10;i++){const f=3*x1*t*(1-t)**2+3*x2*t*t*(1-t)+t**3-x;const d=3*x1*(1-t)**2+6*(x2-x1)*t*(1-t)+3*(1-x2)*t*t;if(Math.abs(d)<1e-6)break;t=Math.min(1,Math.max(0,t-f/d));}return 3*y1*t*(1-t)**2+3*y2*t*t*(1-t)+t**3;};}
@@ -303,14 +304,50 @@ function limeScene(t){
     const a=Math.atan2(pts[i0+1][1]-pts[i0][1],pts[i0+1][0]-pts[i0][0]);ctx.translate(ex,ey);ctx.rotate(a);ctx.fillStyle=C.ink;ctx.beginPath();ctx.moveTo(26,0);ctx.lineTo(-14,-22);ctx.lineTo(-14,22);ctx.fill();ctx.restore();}
 }
 
+function bell(x,y,r,col,sw){ctx.save();ctx.translate(x,y);ctx.rotate(sw);ctx.fillStyle=col;
+  ctx.beginPath();ctx.moveTo(-r*0.75,r*0.45);ctx.quadraticCurveTo(-r*0.7,-r*0.85,0,-r*0.85);ctx.quadraticCurveTo(r*0.7,-r*0.85,r*0.75,r*0.45);ctx.lineTo(r*0.95,r*0.62);ctx.lineTo(-r*0.95,r*0.62);ctx.closePath();ctx.fill();
+  ctx.beginPath();ctx.arc(0,r*0.8,r*0.2,0,7);ctx.fill();ctx.beginPath();ctx.arc(0,-r*0.95,r*0.12,0,7);ctx.fill();ctx.restore();}
 function endScene(t){
-  confetti(t,CUT2,540,960);
-  const s=k(t,CUT2,0.5);
-  line(t,[Wd('برو',CUT2),Wd('حال',VO+P[9][0]+0.3),Wd('کن!',VO+P[9][0]+0.55,{c:C.lime})],1010,200,{w:900});
-  const p=k(t,CUT2+0.9,0.5);
-  if(p>0){ctx.save();ctx.globalAlpha=p;ctx.translate(540,1250+(1-p)*40);ctx.fillStyle=C.card;rr(-250,-58,500,116,58);ctx.fill();
-    ctx.fillStyle=C.lime;rr(-238,-46,236,92,46);ctx.fill();
-    txt('کریتور',120,18,46,800,C.ink);txt('بیزینس',-120,18,46,800,'rgba(244,241,234,.45)');ctx.restore();}
+  // follow CTA: a profile card, a cursor presses «دنبال کردن», the bell rings
+  line(t,[Wd('پیجمو',CUT2+0.05),Wd('فالو',CUT2+0.3,{bg:C.lime,c:C.ink}),Wd('کن',CUT2+0.5)],470,150,{w:900});
+  const cp=k(t,CUT2+0.55,0.55);
+  if(cp>0){
+    const y=980+(1-cp)*140;
+    ctx.save();ctx.globalAlpha=Math.min(1,cp*1.5);
+    ctx.fillStyle=C.card;rr(140,y-210,800,420,56);ctx.fill();ctx.strokeStyle=C.line;ctx.lineWidth=4;ctx.stroke();
+    // avatar (right, RTL) with a story ring
+    const ring=ctx.createLinearGradient(700,y-150,880,y+30);ring.addColorStop(0,C.lime);ring.addColorStop(1,C.violet);
+    ctx.strokeStyle=ring;ctx.lineWidth=9;ctx.beginPath();ctx.arc(790,y-75,82,0,7);ctx.stroke();
+    ctx.fillStyle=mix(C.card,C.lime,0.3);ctx.beginPath();ctx.arc(790,y-75,68,0,7);ctx.fill();
+    compass(790,y-75,34,C.ink,1,0.6);
+    // stats
+    const fol=Math.round(L(0,1,k(t,TAP,0.5)));
+    [['پست','۱۲۰'],['فالوور',fol?'\u2066+۱\u2069':'—'],['فالووینگ','۳۸']].forEach(([lb,v],i)=>{const x=590-i*170;
+      txt(v,x,y-85,48,900,i===1&&fol?C.lime:C.white);txt(lb,x,y-35,30,600,'rgba(244,241,234,.6)');});
+    // follow button
+    const pr=k(t,TAP,0.12,EIO)*(1-k(t,TAP+0.12,0.25));
+    const done=k(t,TAP+0.05,0.3);
+    ctx.save();ctx.translate(540,y+110);ctx.scale(1-0.06*pr,1-0.06*pr);
+    ctx.fillStyle=mix(C.lime,'#2C2F3B',done);rr(-340,-58,680,116,30);ctx.fill();
+    if(done<0.5)txt('دنبال کردن',0,18,50,900,C.ink);
+    else{txt('دنبال می‌کنید',20,18,50,900,C.white);ctx.strokeStyle=C.lime;ctx.lineWidth=9;ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(-205,4);ctx.lineTo(-185,24);ctx.lineTo(-150,-14);ctx.stroke();}
+    ctx.restore();
+    // ripple + cursor
+    const rp=k(t,TAP,0.6);if(t>=TAP&&rp<1){ctx.strokeStyle=C.lime;ctx.globalAlpha=(1-rp);ctx.lineWidth=6;ctx.beginPath();ctx.arc(560,y+120,30+170*rp,0,7);ctx.stroke();ctx.globalAlpha=1;}
+    const mv=k(t,CUT2+0.9,0.5,EIO),out=k(t,TAP+0.5,0.35,EI);
+    if(mv>0&&out<1){const hx=L(980,575,mv)+out*300,hy=L(y+330,y+128,mv)+out*250;
+      ctx.save();ctx.translate(hx,hy);const s=1-0.12*pr;ctx.scale(s,s);ctx.fillStyle=C.white;ctx.strokeStyle=C.ink;ctx.lineWidth=5;
+      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(0,74);ctx.lineTo(18,58);ctx.lineTo(32,88);ctx.lineTo(46,82);ctx.lineTo(32,52);ctx.lineTo(56,52);ctx.closePath();ctx.stroke();ctx.fill();ctx.restore();}
+    ctx.restore();
+  }
+  // bell rings after the follow
+  const bp=k(t,TAP+0.35,0.4);
+  if(bp>0){const sw=0.35*Math.sin((t-TAP-0.35)*22)*Math.exp(-(t-TAP-0.35)*2.5);
+    ctx.save();ctx.translate(540,1330);ctx.scale(bp,bp);ctx.fillStyle=C.violet;ctx.beginPath();ctx.arc(0,0,62,0,7);ctx.fill();bell(0,-4,34,C.ink,sw);ctx.restore();}
+  line(t,[Wd('تا',TAP+0.55),Wd('آموزش‌های',TAP+0.65),Wd('بعدی',TAP+0.75)],1530,76,{w:800});
+  line(t,[Wd('رو',TAP+0.9),Wd('از',TAP+0.98),Wd('دست',TAP+1.06),Wd('ندی!',TAP+1.14,{c:C.lime})],1650,76,{w:800});
+  confetti(t,TAP,560,1090);
 }
 
 window.draw=draw;window.DUR=DUR;window.VO=VO;
@@ -321,7 +358,7 @@ window.SFX=(()=>{const s=[];
   for(let i=0;i<9;i++)s.push(['blip',VO+12.2+i*0.34]);
   s.push(['pop',wt(4,8)],['rise',VO+16.3],['ding',VO+18.7],['whoosh',VO+19.9]);
   for(let i=0;i<9;i++)s.push(['blip2',VO+19.95+i*0.07+0.6]);
-  s.push(['whoosh',VO+21.6],['impact',CUT1],['pop',wt(8,3)],['pop',wt(8,6)],['rise2',CUT2-1.6],['impact',CUT2],['pop',VO+P[9][0]+0.55]);
+  s.push(['whoosh',VO+21.6],['impact',CUT1],['pop',wt(8,3)],['pop',wt(8,6)],['rise2',CUT2-1.6],['impact',CUT2],['pop',CUT2+0.3],['tick',TAP],['ding',TAP+0.35],['pop',TAP+1.14]);
   return s;})();
 const ff=new FontFace('Vaz','url(Vazirmatn-VF.ttf)',{weight:'100 900'});
 ff.load().then(f=>{document.fonts.add(f);return document.fonts.ready;}).then(()=>{draw(0);window.ready=true;});

@@ -1,6 +1,6 @@
 import numpy as np, json, sys, wave
-SR=44100; DUR=30.0; N=int(SR*DUR)
-out_dir=sys.argv[1]; VO=0.42; CUT1=23.5; CUT2=27.85
+SR=44100; DUR=32.0; N=int(SR*DUR)
+out_dir=sys.argv[1]; VO=0.42; CUT1=23.5; CUT2=27.5
 sfx=json.load(open(out_dir+'/sfx.json'))
 rng=np.random.default_rng(7)
 mus=np.zeros(N); fx=np.zeros(N)
@@ -31,7 +31,7 @@ beat=0.5
 KICK=kick()
 for b in range(int(DUR/beat)):
     t=b*beat
-    if t>=29.0: break
+    if t>=31.0: break
     if t>=CUT2-0.5 and t<CUT2: continue           # breath before the final hit
     drop = t>=8.0
     if drop or b%2==0: add(mus,KICK,t,0.9 if drop else 0.55)
@@ -42,21 +42,21 @@ for b in range(int(DUR/beat)):
 # bass + pluck pattern per bar
 roots=[0,0,-2,-4]  # D D C Bb
 pat=[0,2,4,7,4,2,5,4]
-for bar in range(15):
+for bar in range(16):
     t0=bar*2.0
     r=roots[bar%4]
-    if t0>=4.0 and t0<29:
+    if t0>=4.0 and t0<31:
         for q in range(4):
             add(mus,tone(hz(r-24),0.45,0.18,(1,.3)),t0+q*0.5+0.25,0.55)
     for i in range(16 if t0>=8 else 8):
         tt=t0+i*(0.125 if t0>=8 else 0.25)
-        if tt>=29 or (CUT2-0.5<=tt<CUT2): continue
+        if tt>=31 or (CUT2-0.5<=tt<CUT2): continue
         deg=pat[i%8]; semi=SHUR[deg%8]+r*0 + (12 if (bar%4==3 and i%8>5) else 0)
         add(mus,tone(hz(semi),0.4,0.09,(1,.35,.12,.05)),tt,0.16)
 # pad
 t=np.arange(N)/SR
 pad=sum(np.sin(2*np.pi*hz(s-12)*t+0.3*np.sin(2*np.pi*0.2*t)) for s in (0,7,12))*0.05
-mus+=pad*np.clip(t/3,0,1)*np.clip((29.8-t)/1.5,0,1)
+mus+=pad*np.clip(t/3,0,1)*np.clip((31.9-t)/1.5,0,1)
 # sfx
 for kind,tt in sfx:
     if kind=='pop': add(fx,tone(880,0.12,0.03,(1,.4)),tt,0.35)
