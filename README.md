@@ -18,6 +18,9 @@ Built by and for post-production professionals, our goal is to democratize high-
 - **✂️ NLE Integration System:** Export structured project files (XML/JSON) directly to Premiere Pro and After Effects for rapid timeline assembly.
 - **⚙️ Asset & Auto-Caption Manager:** Organize generated assets and streamline the subtitling process for social media formats (Reels, TikTok, Shorts).
 
+## 🎞️ Projects
+- **[maryam-motion](maryam-motion/)**: a 63-second Persian 9:16 motion graphic built with Remotion. Its scenes and kinetic captions are synced word by word to the narration.
+
 ## 🗺️ Roadmap
 - [ ] **Phase 1 (Current):** System architecture design and building the core Prompt/Script generation MVP.
 - [ ] **Phase 2:** Developing export modules for NLE timeline integration (XML generation).

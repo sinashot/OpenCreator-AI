@@ -1,0 +1,28 @@
+{
+  "name": "maryam-motion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Persian 9:16 motion graphic (1080x1920, 60fps, 63.13s) synced to the narration, built with Remotion",
+  "type": "module",
+  "scripts": {
+    "preview": "vite --host 0.0.0.0 --port 5173",
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts MaryamFilm out/maryam-motion.mp4",
+    "still": "remotion still src/index.ts MaryamFilm out/still.png",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.536",
+    "@remotion/player": "4.0.536",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.536"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "@types/react-dom": "19.1.9",
+    "@vitejs/plugin-react": "5.0.4",
+    "typescript": "5.9.2",
+    "vite": "7.1.9"
+  }
+}
