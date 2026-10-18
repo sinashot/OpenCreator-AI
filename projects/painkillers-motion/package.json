@@ -1,0 +1,22 @@
+{
+  "name": "painkillers-motion",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Persian Instagram motion graphic: how painkillers work",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts Painkillers out/painkillers.mp4"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.530",
+    "@remotion/cli": "4.0.530",
+    "@remotion/renderer": "4.0.530",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.530"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.12",
+    "typescript": "5.9.2"
+  }
+}
