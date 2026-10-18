@@ -192,7 +192,7 @@ export const Opioid: React.FC<SceneProps> = ({t, sec}) => {
 					const p = inn(t, lockT(i) - 0.45, 0.45);
 					const side = i % 2 ? -1 : 1;
 					return (
-						<At key={y} x={mix(540 + side * 520, 540, p)} y={y}>
+						<At key={y} x={mix(540 + side * 520, 540, p)} y={y} style={{opacity: clamp(p * 4)}}>
 							<div style={{transform: `rotate(${(1 - p) * 180}deg) scale(${punch(t, lockT(i), 0.25)})`}}>
 								<svg width={120} height={104} viewBox="0 0 120 104">
 									<polygon points="30,0 90,0 120,52 90,104 30,104 0,52" fill={C.opioid} />
