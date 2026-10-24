@@ -1,0 +1,5 @@
+node_modules/
+out/
+sina-x-claude/audio/*.wav
+# Sina's own photos stay local (the film reads assets/ref_portrait.png for the framed-photo gag)
+sina-x-claude/assets/ref_*
