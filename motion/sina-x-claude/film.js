@@ -485,7 +485,7 @@ function screen(obj, off = [0, 0, 0]) {
   v3.project(W3.cam);
   return [(v3.x + 1) / 2 * W, (1 - v3.y) / 2 * H, v3.z];
 }
-const CUTS = [10.85, 47.8];
+const CUTS = [10.85, 27.4, 47.8];
 function lineEnd(i) {
   const l = S.LINES[i], nx = S.LINES[i + 1];
   let e = Math.min(nx ? nx.t - 0.06 : 1e9, l.t + l.d + 0.75);
@@ -544,9 +544,9 @@ function overlays(ctx, t) {
     });
   }
   // the complaint stamp (27.5 ..) and the chapter tag
-  if (t > 27.45 && t < 28.9) {
-    const k = lerp(3.2, 1, E.outCubic(prog(t, 27.45, 27.6))) * (1 - E.inBack(prog(t, 28.5, 28.85)));
-    O.stamp(ctx, 'گلایه‌ها!', W / 2, H * 0.32, k, -0.12, { size: 150, fill: 'rgba(255,248,238,.92)' });
+  if (t > 27.45 && t < 28.6) {
+    const k = lerp(3.2, 1, E.outCubic(prog(t, 27.45, 27.6))) * (1 - E.inBack(prog(t, 28.3, 28.55)));
+    O.stamp(ctx, 'گلایه‌ها!', W / 2, H * 0.3, k, -0.12, { size: 150, fill: 'rgba(255,248,238,.92)' });
   }
   // card counters
   {
