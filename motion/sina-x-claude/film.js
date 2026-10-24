@@ -1,17 +1,18 @@
 // Sina x Claude: a brick-film conversation. Pure function of time: window.seek(t) paints frame t.
-// script.js holds the acting (dialogue, poses, faces, camera); this file builds the set and plays it.
+// script.js holds the acting, timed from the voice (cues.json); this file builds the set and plays it.
 import * as M from './lib/motion.js';
 import * as G from './lib/gl.js';
 import * as L from './sets/lego.js';
 import * as PR from './sets/props.js';
 import { drawFace } from './sets/faces.js';
 import * as S from './script.js';
-import { speech, mouthAt } from './syllables.js';
 import * as O from './overlay.js';
 
 const THREE = G.THREE;
 const { W, H, E, clamp, lerp, prog, hash01, noise1, wobble, bump } = M;
 const TAU = Math.PI * 2;
+const { T, TE, W: Wd, CUE } = S;
+const DUR = S.DURATION;
 
 // ---------------------------------------------------------------- tracks
 const EASE = {
@@ -36,64 +37,42 @@ function lerpObj(a, b, p) {
   for (const k in b) if (!(k in o)) o[k] = lerp(0, b[k], p);
   return o;
 }
+const sortT = (tr) => [...tr].sort((a, b) => a[0] - b[0]);
 const poseOf = (name) => ({ ...L.REST, ...(S.POSES[name] || {}) });
-const POSE_TRACK = {
-  C: S.POSE_C.map(([t, n, d]) => [t, poseOf(n), d]),
-  S: S.POSE_S.map(([t, n, d]) => [t, poseOf(n), d]),
-};
+const POSE_TRACK = { C: sortT(S.POSE_C).map(([t, n, d]) => [t, poseOf(n), d]), S: sortT(S.POSE_S).map(([t, n, d]) => [t, poseOf(n), d]) };
 const F0 = { open: 1, lookX: 0, lookY: 0, brow: 0, browY: 0, blush: 0, tear: 0 };
 const faceOf = (n) => { const e = S.EXPR[n]; const o = { ...F0 }; for (const k in e) if (typeof e[k] === 'number') o[k] = e[k]; return o; };
-const EXPR_TRACK = { C: S.EXPR_C, S: S.EXPR_S };
-const EXPR_NUM = { C: S.EXPR_C.map(([t, n]) => [t, faceOf(n), 0.14, 'out']), S: S.EXPR_S.map(([t, n]) => [t, faceOf(n), 0.14, 'out']) };
-const LINES_OF = { C: [], S: [] };
-S.LINES.forEach((l, i) => { l.index = i; LINES_OF[l.who].push(l); });
-const SPEECH = new Map(S.LINES.map((l) => [l, speech(l, l.index)]));
-const mouthCache = new Map(SPEECH);
+const EXPR_TRACK = { C: sortT(S.EXPR_C), S: sortT(S.EXPR_S) };
+const EXPR_NUM = { C: EXPR_TRACK.C.map(([t, n]) => [t, faceOf(n), 0.14, 'out']), S: EXPR_TRACK.S.map(([t, n]) => [t, faceOf(n), 0.14, 'out']) };
+const LOOK = { C: sortT(S.LOOK_C), S: sortT(S.LOOK_S) }, ROOT = { C: sortT(S.ROOT_C), S: sortT(S.ROOT_S) };
+const CAMK = sortT(S.CAM).map(([tt, p, g, d, e]) => [tt, [...p, ...g], d, e]);
 
-// Real voices (audio/vo_build.mjs): speech.json holds the time warp that makes room for each take,
-// the word times and a mouth envelope per speaker. Without it the film keeps its own timing.
-const SP = await fetch('speech.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
-const WARP = SP?.warp || [[0, 0], [1e4, 1e4]];
-function warpMap(x, from, to) {
-  for (let i = 1; i < WARP.length; i++) {
-    if (x > WARP[i][from]) continue;
-    const a = WARP[i - 1], b = WARP[i];
-    return b[from] === a[from] ? b[to] : a[to] + ((x - a[from]) / (b[from] - a[from])) * (b[to] - a[to]);
-  }
-  const l = WARP[WARP.length - 1];
-  return x - l[from] + l[to];
-}
-const toNew = (t) => warpMap(t, 0, 1), toOld = (t) => warpMap(t, 1, 0);
-if (SP) for (const l of S.LINES) {
-  const r = SP.lines[l.id];
-  if (!r) continue;
-  const disp = SPEECH.get(l).words, n = disp.length, m = r.words.length;
-  const words = disp.map((w, i) => ({ text: w.text, t: toOld(m === n ? r.words[i] : r.t0 + (r.t1 - r.t0) * (i / n)) }));
-  SPEECH.set(l, { words, syl: [], end: toOld(r.t1) });
-}
-// the mouth follows the real voice: its loudness, sampled at the film's new time
-function realMouth(who, tOld) {
-  const e = SP.env[who], i = Math.round(toNew(tOld) * 100);
+// speech from the real takes: display words on their spoken onsets; the mouth follows the loudness
+const SPEECH = new Map(S.LINES.map((l) => {
+  const c = CUE.lines[l.id], disp = l.text.split(/\s+/).filter(Boolean), n = disp.length, m = c.words.length;
+  const words = disp.map((text, i) => ({ text, t: m === n ? c.words[i] : c.t0 + (c.t1 - c.t0) * (i / n) }));
+  return [l, { words, end: c.t1 }];
+}));
+function mouth(who, t) {
+  const e = CUE.env[who], i = Math.round(t * 100);
   return { open: Math.min(1, (e[i] || 0) * 1.15), vis: 0.85 + 0.15 * ((i >> 3) % 3) };
 }
+const talkingAt = (who, t) => S.LINES.some((l) => l.who === who && t > l.t && t < SPEECH.get(l).end);
 
+function exprIndex(who, t) { const tr = EXPR_TRACK[who]; let i = 0; while (i + 1 < tr.length && tr[i + 1][0] <= t) i++; return i; }
+const exprName = (who, t) => EXPR_TRACK[who][exprIndex(who, t)][1];
 function exprAt(who, t) {
-  const tr = EXPR_TRACK[who];
-  let i = 0;
-  while (i + 1 < tr.length && tr[i + 1][0] <= t) i++;
+  const tr = EXPR_TRACK[who], i = exprIndex(who, t);
   const e = S.EXPR[tr[i][1]];
   const F = chain(EXPR_NUM[who], t, lerpObj, 'out', 0.14);
   F.eyes = e.eyes; F.mouth = e.mouth;
   // a blink hides every face swap, plus natural blinks every few seconds
-  const since = t - tr[i][0];
-  let open = since < 0.07 && i > 0 ? 0.05 : 1;
+  let open = t - tr[i][0] < 0.07 && i > 0 ? 0.05 : 1;
   const per = 3.3, k = Math.floor(t / per), off = hash01(k, who === 'C' ? 4 : 9) * 1.6;
   if (t - k * per - off >= 0 && t - k * per - off < 0.11) open = 0.05;
   F.open = (F.open ?? 1) * open;
   return F;
 }
-
-// hops: y offset and landing squash
 function hopAt(hops, t) {
   let y = 0, sq = 0;
   for (const [t0, h, d] of hops) {
@@ -102,23 +81,28 @@ function hopAt(hops, t) {
   }
   return { y, sq };
 }
+// Claude's spark spins faster in his big moments (closed form, so it stays a pure function of time)
+const SPIN = [[TE('ask'), T('sure'), 14], [Wd('ten', 7), TE('ten'), 9], [T('jobs2'), TE('jobs2'), -10], [Wd('jobs3', 3), Wd('jobs3', 5), 6],
+  [T('job'), Wd('job', 6), 16], [T('uni', -0.35), T('uni', 0.2), 20], [T('doom'), TE('doom'), 16], [Wd('yay', 4), TE('yay'), 18],
+  [Wd('once', 8), TE('once'), 12], [Wd('tired', 5), TE('tired'), 10]];
+const sparkAngle = (t) => SPIN.reduce((a, [t0, t1, r]) => a + r * clamp(t - t0, 0, t1 - t0), t * 0.6);
 
-// spark spin: piecewise-constant extra rates, integrated in closed form
-const SPIN = [[4.1, 5.5, 14], [7.8, 8.6, 9], [15.2, 17.0, -10], [17.6, 19.0, 6], [33.45, 34.0, 20], [40.3, 42.5, 16], [59.1, 60.8, 18], [63.0, 63.8, 12], [79.6, 80.3, 10]];
-function sparkAngle(t) {
-  let a = t * 0.6;
-  for (const [t0, t1, r] of SPIN) a += r * clamp(t - t0, 0, t1 - t0);
-  return a;
-}
+// key moments
+const FAINT = Wd('new', 4, 0.2);            // Claude starts to fall
+const POP = FAINT + 0.6;                     // the spark pops off as he lands
+const RANT_OUT = Wd('job', 6);               // the ten Sinas vanish
 
 // ---------------------------------------------------------------- the set
 let SET = null, W3 = null;
+const CLONE_POS = [[2.6, -3.7, 1.7], [1.3, -3.7, 1.7], [0, -3.7, 1.7], [-1.3, -3.7, 1.7], [-2.6, -3.7, 1.7],
+  [2.95, -2.35, 0.85], [1.75, -2.35, 0.85], [0, -2.35, 0.85], [-1.75, -2.35, 0.85], [-2.95, -2.35, 0.85]];
+const CLONE_FACES = ['proud', 'happy', 'smug', 'curious', 'happy', 'joy', 'proud', 'starry', 'curious', 'calm'];
 
 function build(IMG) {
   const scene = new THREE.Scene();
   const cam = G.camera(30, 0.1, 200);
   const key = new THREE.DirectionalLight(0xfff1e2, 3.0);
-  key.position.set(-6, 12, 9); key.castShadow = !new URLSearchParams(location.search).has('noshadow');
+  key.position.set(-6, 12, 9); key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
   Object.assign(key.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 1, far: 50 });
   key.shadow.camera.updateProjectionMatrix(); key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02;
@@ -128,36 +112,39 @@ function build(IMG) {
   const spot = new THREE.SpotLight(0xfff0d0, 0, 40, 0.42, 0.5, 0);
   spot.position.set(0, 16, 2); spot.castShadow = false;
   scene.add(spot); scene.add(spot.target);
-
-  const floor = L.baseplate(40, 40, '#DCC7A0'); scene.add(floor);
+  scene.add(L.baseplate(40, 40, '#DCC7A0'));
 
   const claude = L.minifig('claude'), sina = L.minifig('sina');
   scene.add(claude.root, sina.root);
 
-  // clones: four Sinas (morning editor, noon designer, evening motion, night prompts) on a riser
-  const riser = new THREE.Group();
-  const rb = L.brick(14, 3, '#5E6A7A', { h: 1.2 }); riser.add(rb);
-  riser.position.set(0, -1.4, -2.9); scene.add(riser);
-  const sClones = [];
-  const cloneFaces = ['proud', 'happy', 'smug', 'curious'];
-  const cloneProps = [PR.clapper(), { group: PR.pencil() }, { group: PR.keyframe() }, { group: PR.laptop() }];
-  for (let i = 0; i < 4; i++) {
+  // Sina's marks: his portrait on a brick billboard, and a name stand in front of each of them
+  const poster = PR.posterBoard(IMG.portrait); poster.position.set(3.35, 0, -5.2); poster.rotation.y = -0.3; scene.add(poster);
+  const standS = PR.nameStand('سینا', '#D3121E', '#FFFFFF'); standS.position.set(S.SX + 0.1, 0, 1.25); standS.rotation.y = -0.15; scene.add(standS);
+  const standC = PR.nameStand('کلاد', '#C8623F', '#FFF8EE'); standC.position.set(S.CX - 0.1, 0, 1.25); standC.rotation.y = 0.15; scene.add(standC);
+
+  // the ten Sinas, on two risers
+  const risers = [L.brick(16, 3, '#5E6A7A', { h: 1.7 }), L.brick(18, 3, '#6E7B8C', { h: 0.85 })];
+  risers[0].position.set(0, -2, -3.7); risers[1].position.set(0, -1, -2.35);
+  risers.forEach((r) => scene.add(r));
+  const propFor = [() => PR.clapper(), () => ({ group: PR.pencil() }), () => ({ group: PR.keyframe() }), () => ({ group: PR.laptop() }),
+    null, null, () => ({ group: PR.megaphone() }), () => { const j = PR.jet(); j.scale.setScalar(0.16); return { group: j }; },
+    () => { const c = PR.capsule(); c.scale.setScalar(0.32); return { group: c }; }, () => ({ group: PR.pencil() })];
+  const sClones = CLONE_POS.map((p, i) => {
     const f = L.minifig('sina');
-    f.faceTex.draw((c) => drawFace(c, 'sina', { ...faceOf(cloneFaces[i]), eyes: S.EXPR[cloneFaces[i]].eyes, mouth: S.EXPR[cloneFaces[i]].mouth }, 0));
-    f.prop = cloneProps[i];
-    f.parts.handR.add(f.prop.group);
-    scene.add(f.root); sClones.push(f);
-  }
-  // prop placement in the right hand
-  sClones[0].prop.group.position.set(0, 0.1, 0.45); sClones[0].prop.group.scale.setScalar(0.8);
-  sClones[1].prop.group.position.set(0, 0.3, 0.25); sClones[1].prop.group.rotation.x = 0.4;
-  sClones[2].prop.group.position.set(0, 0.45, 0.3);
-  sClones[3].prop.group.position.set(-0.1, -0.05, 0.6); sClones[3].prop.group.rotation.x = -0.9; sClones[3].prop.group.scale.setScalar(0.85);
-  const cClones = [];
-  for (let i = 0; i < 3; i++) { const f = L.minifig('claude'); scene.add(f.root); cClones.push(f); }
+    const n = CLONE_FACES[i];
+    f.faceTex.draw((c) => drawFace(c, 'sina', { ...faceOf(n), eyes: S.EXPR[n].eyes, mouth: S.EXPR[n].mouth }, 0));
+    if (propFor[i]) { f.prop = propFor[i](); f.parts.handR.add(f.prop.group); }
+    scene.add(f.root);
+    return f;
+  });
+  const placeProp = (i, pos, rot = [0, 0, 0], s = 1) => { const g = sClones[i].prop.group; g.position.set(...pos); g.rotation.set(...rot); if (s !== 1) g.scale.multiplyScalar(s); };
+  placeProp(0, [0, 0.1, 0.45], [0, 0, 0], 0.8); placeProp(1, [0, 0.3, 0.25], [0.4, 0, 0]); placeProp(2, [0, 0.45, 0.3]);
+  placeProp(3, [-0.1, -0.05, 0.6], [-0.9, 0, 0], 0.85); placeProp(6, [0, 0.15, 0.45], [0.3, 0, 0]); placeProp(7, [0, 0.3, 0.35], [0, Math.PI / 2, 0.3]);
+  placeProp(8, [0, 0.2, 0.3]); placeProp(9, [0, 0.3, 0.25], [0.4, 0, 0.3]);
+  const cClones = [0, 1, 2].map(() => { const f = L.minifig('claude'); scene.add(f.root); return f; });
 
   // props
-  const jet = PR.jet(); jet.scale.setScalar(0.62); scene.add(jet);
+  const jet = PR.jet(); jet.scale.setScalar(0.8); scene.add(jet);
   const pill = PR.capsule(); pill.scale.setScalar(0.9); scene.add(pill);
   const cards = Array.from({ length: 8 }, (_, i) => { const c = PR.refCard(i); scene.add(c); return c; });
   const cap = PR.gradCap(); claude.parts.headTop.add(cap);
@@ -167,52 +154,49 @@ function build(IMG) {
   const myStack = PR.tileStack(2, 3); myStack.group.position.set(-1.75, 0, 1.7); myStack.group.scale.setScalar(0.8); scene.add(myStack.group);
   const lbrick = PR.labelBrick(); scene.add(lbrick.group);
   const tom = PR.tomato(); tom.group.position.set(1.85, 0, 2.4); scene.add(tom.group);
-  const tl = PR.timeline(); tl.group.position.set(-0.5, 0, 2.2); tl.group.scale.setScalar(0.42); scene.add(tl.group);
+  const tl = PR.timeline(); tl.group.position.set(-0.5, 0, 2.2); scene.add(tl.group);
   const frame = PR.frameWithPhoto(IMG.portrait); scene.add(frame);
-  const cupC = PR.cup(), cupS = PR.cup();
-  claude.parts.handR.add(cupC); sina.parts.handR.add(cupS);
+  const cupC = PR.cup(), cupS = PR.cup(), cupFly = PR.cup();
+  claude.parts.handR.add(cupC); sina.parts.handR.add(cupS); scene.add(cupFly);
   const conf = PR.confetti(110); scene.add(conf.mesh);
   const puffs = PR.puffs(12); scene.add(puffs.group);
+  const poofs = PR.puffs(10); scene.add(poofs.group);
   const scroll2 = PR.scroll('new'); scene.add(scroll2.group);
   const looseSpark = new THREE.Mesh(L.sparkGeometry(0.32), L.plastic('#D97757')); looseSpark.castShadow = true; scene.add(looseSpark);
 
-  W3 = { scene, cam, key, rim, hemi, spot, floor, claude, sina, riser, sClones, cClones, jet, pill, cards, cap, scroll, ped, hiroStack, myStack, lbrick, tom, tl, frame, cupC, cupS, conf, puffs, scroll2, looseSpark };
+  W3 = { scene, cam, key, rim, hemi, spot, claude, sina, poster, standS, standC, risers, sClones, cClones, jet, pill, cards, cap, scroll, ped, hiroStack, myStack, lbrick, tom, tl, frame, cupC, cupS, cupFly, conf, puffs, poofs, scroll2, looseSpark };
   return { scene, camera: cam, update };
 }
 
 // ---------------------------------------------------------------- per-frame
-const show = (o, v) => { o.visible = v; };
-function scaleIn(o, t, t0, t1 = 1e9, d = 0.3) {
+function scaleIn(o, t, t0, t1 = 1e9, d = 0.3, s = 1) {
   const k = Math.min(E.outBack(prog(t, t0, t0 + d), 2.2), 1 - E.inBack(prog(t, t1, t1 + d * 0.6), 1.5));
-  o.visible = k > 0.001; o.scale.setScalar(Math.max(0.001, k));
+  o.visible = k > 0.001; o.scale.setScalar(Math.max(0.001, k) * s);
   return k;
 }
 
 function actor(fig, who, t) {
   const tq = Math.floor(t * 12) / 12;                // on twos at 24 fps: the brick-film cadence
   const pose = chain(POSE_TRACK[who], tq, lerpObj, 'back', 0.25);
-  const look = chain(who === 'C' ? S.LOOK_C : S.LOOK_S, tq, lerpArr, 'out', 0.25);
-  const root = chain(who === 'C' ? S.ROOT_C : S.ROOT_S, tq, lerpArr, 'out', 0.3);
-  const rootPrev = chain(who === 'C' ? S.ROOT_C : S.ROOT_S, tq - 0.07, lerpArr, 'out', 0.3);
+  const look = chain(LOOK[who], tq, lerpArr, 'out', 0.25);
+  const root = chain(ROOT[who], tq, lerpArr, 'out', 0.3);
+  const rootPrev = chain(ROOT[who], tq - 0.07, lerpArr, 'out', 0.3);
   const speed = Math.hypot(root[0] - rootPrev[0], root[1] - rootPrev[1]) / 0.07;
   const hop = hopAt(who === 'C' ? S.HOPS_C : S.HOPS_S, tq);
   let y = hop.y;
   if (who === 'C') for (const [a, b, h] of S.FLOAT_C) {
-    const k = E.outCubic(prog(tq, a, a + 0.6)) * (1 - E.inCubic(prog(tq, b - 0.15, b)));
+    const k = E.outCubic(prog(tq, a, a + 0.5)) * (1 - E.inCubic(prog(tq, b - 0.15, b)));
     y += k * (h + 0.08 * Math.sin(tq * 3));
   }
-  const m = SP ? realMouth(who, tq) : mouthAt(LINES_OF[who], tq, mouthCache);
-  const talking = m.open > 0.02 || LINES_OF[who].some((l) => tq > l.t && tq < SPEECH.get(l).end);
+  const m = mouth(who, tq);
   const q = { ...pose };
   q.headY += look[0]; q.headX += look[1];
-  if (talking) {
+  if (talkingAt(who, tq)) {
     q.headX += 0.05 * m.open - 0.02;
     q.armR += 0.1 * Math.sin(tq * 9.0) * (pose.armR > 0.5 && pose.armR < 2 ? 1 : 0);
     q.armL += 0.08 * Math.sin(tq * 7.0 + 1) * (pose.armL > 0.5 && pose.armL < 2 ? 1 : 0);
   }
-  // walking legs when the root moves
   if (speed > 0.3) { const sw = Math.min(0.7, speed * 0.25) * Math.sin(tq * 22); q.legR += sw; q.legL -= sw; q.armR -= sw * 0.7; q.armL += sw * 0.7; }
-  // idle life: a slow sway
   q.side = (q.side || 0) + 0.02 * Math.sin(tq * 1.7 + (who === 'C' ? 0 : 2));
   L.applyPose(fig, q);
   fig.root.position.set(root[0], y, root[1]);
@@ -221,36 +205,39 @@ function actor(fig, who, t) {
   const F = exprAt(who, tq);
   F.talk = m.open; F.vis = m.vis;
   fig.faceTex.draw((c) => drawFace(c, fig.who, F, tq));
-  return { F, talking };
+}
+
+// constants of the film computed once from the rig: where the spark and the cup are when Claude faints
+let SPARK0 = null, CUP0 = null;
+function faintStart() {
+  if (SPARK0) return;
+  actor(W3.claude, 'C', POP); W3.claude.root.updateMatrixWorld(true);
+  const p = new THREE.Vector3(); W3.claude.parts.spark.getWorldPosition(p); SPARK0 = [p.x, p.y, p.z];
+  actor(W3.claude, 'C', FAINT); W3.claude.root.updateMatrixWorld(true);
+  W3.claude.parts.handR.getWorldPosition(p); CUP0 = [p.x, p.y, p.z];
 }
 
 function update(t) {
   const w = W3, tq = Math.floor(t * 12) / 12;
-  if (t >= 83.3) sparkStart();
-  const a = actor(w.claude, 'C', t);
+  if (t >= FAINT) faintStart();
+  actor(w.claude, 'C', t);
   actor(w.sina, 'S', t);
 
-  // Claude's spark: spins, glows when happy, droops when sad
-  const sp = w.claude.parts.spark;
-  sp.rotation.set(0, 0, sparkAngle(tq));
-  const sad = ['sad', 'cry', 'deadpan', 'ko'].includes(exprName('C', tq));
-  sp.rotation.x = sad ? 0.9 : 0;
-  const capK = Math.max(0, Math.min(E.outBack(prog(t, 33.6, 33.9), 2.2), 1 - E.inBack(prog(t, 36.1, 36.28), 1.5)));
-  sp.position.y = L.STUD_H + 0.3 - (sad ? 0.05 : 0) + 0.22 * capK;
-  const glow = ['love', 'joy', 'starry', 'shy'].includes(exprName('C', tq)) ? 0.6 : 0;
-  w.claude.parts.sparkMesh.material.emissiveIntensity = glow;
-  const loose = t >= 83.3;
-  sp.visible = !loose;
+  // Claude's spark: spins, glows when happy, droops when sad; rides up through the grad cap
+  const sp = w.claude.parts.spark, en = exprName('C', tq);
+  sp.rotation.set(['sad', 'cry', 'deadpan', 'ko'].includes(en) ? 0.9 : 0, 0, sparkAngle(tq));
+  const capK = Math.max(0, Math.min(E.outBack(prog(t, T('uni', -0.2), T('uni', 0.1)), 2.2), 1 - E.inBack(prog(t, T('rules', -0.4), T('rules', -0.22)), 1.5)));
+  sp.position.y = L.STUD_H + 0.3 + 0.22 * capK;
+  w.claude.parts.sparkMesh.material.emissiveIntensity = ['love', 'joy', 'starry', 'shy'].includes(en) ? 0.6 : 0;
+  sp.visible = t < POP;
 
   // camera
-  const camv = chain(S.CAM.map(([tt, p, g, d, e]) => [tt, [...p, ...g], d, e]), t, lerpArr, 'io', 0.6);
-  let [px, py, pz, gx, gy, gz] = camv;
+  let [px, py, pz, gx, gy, gz] = chain(CAMK, t, lerpArr, 'io', 0.6);
   for (const [t0, amp, dec] of S.SHAKES) {
     if (t < t0 || t > t0 + dec * 4) continue;
     const k = amp * Math.exp(-(t - t0) / dec);
     px += k * noise1(t * 40, 3); py += k * noise1(t * 40, 7);
   }
-  // a hand-held breath on everything
   px += 0.03 * noise1(t * 0.7, 21); py += 0.025 * noise1(t * 0.6, 22);
   G.lookFrom(w.cam, [px, py, pz], [gx, gy, gz]);
 
@@ -259,13 +246,12 @@ function update(t) {
   const mv = (k) => { let s = 0; for (const m in mw) s += (LIGHT[m][k] ?? LIGHT.studio[k]) * mw[m]; return s; };
   w.key.intensity = mv('key'); w.hemi.intensity = mv('hemi'); w.rim.intensity = mv('rim');
   w.key.color.setRGB(mv('kr'), mv('kg'), mv('kb'));
-  w.spot.intensity = mv('spot'); w.spot.visible = w.spot.intensity > 0.01;
-  w.rim.visible = w.rim.intensity > 0.01;
-  const spotOnClaude = t > 48.5 && t < 54;
-  w.spot.target.position.set(spotOnClaude ? S.CX : 0, 0, spotOnClaude ? 0 : -2.8);
-  w.spot.position.set(spotOnClaude ? S.CX : 0, 16, spotOnClaude ? 3 : 1);
+  w.spot.intensity = mv('spot'); w.spot.visible = w.spot.intensity > 0.01; w.rim.visible = w.rim.intensity > 0.01;
+  const onClaude = t > TE('hiro2') && t < T('eye');
+  w.spot.target.position.set(onClaude ? S.CX : 0, 0, onClaude ? 0 : -2.8);
+  w.spot.position.set(onClaude ? S.CX : 0, 16, onClaude ? 3 : 1);
 
-  events(t, tq, a);
+  events(t, tq);
 }
 const LIGHT = {
   studio: { key: 3.0, hemi: 0.55, rim: 1.3, kr: 1, kg: 0.95, kb: 0.88, spot: 0 },
@@ -276,364 +262,417 @@ const LIGHT = {
   golden: { key: 3.2, hemi: 0.6, rim: 1.8, kr: 1, kg: 0.8, kb: 0.55, spot: 0 },
   end: { key: 3.0, hemi: 0.6, rim: 1.2, kr: 1, kg: 0.95, kb: 0.88, spot: 0 },
 };
-function exprName(who, t) {
-  const tr = EXPR_TRACK[who];
-  let i = 0;
-  while (i + 1 < tr.length && tr[i + 1][0] <= t) i++;
-  return tr[i][1];
-}
 
 // ---------------------------------------------------------------- props and events
-function events(t, tq, act) {
+function events(t, tq) {
   const w = W3;
-  // --- clones (8.8 .. 14.6)
-  const riserK = E.outBack(prog(t, 8.6, 9.1), 1.6) * (1 - E.inCubic(prog(t, 14.3, 14.8)));
-  w.riser.position.y = -1.4 + 1.4 * riserK; w.riser.visible = riserK > 0.001;
-  const cloneX = [2.75, 0.95, -0.95, -2.75];
+  // name stands: the opening only (the end card names them both)
+  for (const st of [w.standS, w.standC]) {
+    const k = scaleIn(st, t, 0.15, T('jobs1', -0.3), 0.3);
+    st.visible = k > 0.001; st.scale.setScalar(Math.max(0.001, k) * 0.55);
+  }
+
+  // --- the ten Sinas: the risers come up on "ten", each Sina pops on his role, all go on "I still..."
+  const rk = E.outBack(prog(t, Wd('ten', 7, -0.3), Wd('ten', 7, 0.25)), 1.6) * (1 - E.inCubic(prog(t, RANT_OUT, RANT_OUT + 0.5)));
+  w.risers[0].position.y = -2 + 2 * rk; w.risers[1].position.y = -1 + 1 * rk;
+  w.risers.forEach((r) => { r.visible = rk > 0.001; });
   w.sClones.forEach((f, i) => {
-    const t0 = 9.0 + i * 0.5, k = scaleIn(f.root, t, t0, 14.2 + i * 0.05, 0.35);
+    const t0 = S.ROLES[i].t, k = scaleIn(f.root, t, t0, RANT_OUT + i * 0.03, 0.3);
     if (k <= 0) return;
-    f.root.position.set(cloneX[i], 1.2 * riserK + 0.17 + 0.6 * Math.max(0, Math.sin(Math.PI * prog(t, t0, t0 + 0.35))), -2.9);
-    f.root.rotation.y = -cloneX[i] * 0.08;
-    const act2 = [
-      { armR: 1.4 + 0.25 * Math.max(0, Math.sin(tq * 9)), armL: 1.2, outL: -0.2 },
-      { armR: 1.7 + 0.2 * Math.sin(tq * 6), outR: 0.1 },
-      { armR: 2.6, outR: 0.25, armL: 0.3 },
-      { armR: 1.1, armL: 1.1, outR: -0.15, outL: -0.15, headX: 0.25 },
+    const [x, z, h] = CLONE_POS[i];
+    f.root.position.set(x, h * rk + 0.17 + 0.7 * Math.max(0, Math.sin(Math.PI * prog(t, t0, t0 + 0.35))), z);
+    f.root.rotation.y = -x * 0.07;
+    const beat = Math.max(0, Math.sin(tq * 8 + i));
+    const act = [
+      { armR: 1.4 + 0.25 * beat, armL: 1.2, outL: -0.2 }, { armR: 1.7 + 0.2 * Math.sin(tq * 6), outR: 0.1 },
+      { armR: 2.6, outR: 0.25, armL: 0.3 }, { armR: 1.1, armL: 1.1, outR: -0.12, outL: -0.12, headX: 0.25 },
+      { armR: 0.9 + 0.3 * beat, armL: 0.9, outR: 0.3, outL: 0.3 }, { armR: 2.4, outR: 0.4, armL: 0.6, headZ: 0.15 },
+      { armR: 1.5, outR: 0.05, armL: 1.0 + 0.4 * beat }, { armR: 2.2, outR: 0.3, armL: 2.2, outL: 0.3 },
+      { armR: 1.3, outR: 0.0, armL: 0.3 }, { armR: 1.1, outR: 0.6, armL: 1.1, outL: 0.6, headX: -0.1 },
     ][i];
-    L.applyPose(f, { ...L.REST, ...act2, headY: Math.sin(tq * 2 + i) * 0.15 });
-    if (i === 0) f.prop.arm.rotation.z = 0.5 * Math.max(0, Math.sin(tq * 9));
+    L.applyPose(f, { ...L.REST, ...act, headY: Math.sin(tq * 2 + i) * 0.15 });
+    if (i === 0) f.prop.arm.rotation.z = 0.5 * beat;
     if (i === 2) f.prop.group.rotation.y = tq * 3;
   });
-  // Claude clones run around him and crash (14.6 .. 16.9)
-  w.cClones.forEach((f, i) => {
-    const k = scaleIn(f.root, t, 14.6 + i * 0.08, 16.75, 0.25);
-    if (k <= 0) return;
-    const run = clamp((tq - 14.7) / 1.1), a0 = (i / 3) * TAU + 0.6;
-    const ang = a0 + run * 7 + (i - 1) * 0.15 * (tq > 15.8 ? 1 : 0);
-    const r = tq < 15.8 ? 1.35 : 1.35 - 0.5 * E.outBack(prog(tq, 15.8, 16.0), 2);
-    f.root.position.set(S.CX + Math.cos(ang) * r, tq > 15.8 && tq < 16.1 ? 0.25 * Math.sin(Math.PI * prog(tq, 15.8, 16.1)) : 0, Math.sin(ang) * r * 0.75 + 0.3);
-    f.root.rotation.y = tq < 15.8 ? -ang : -ang + Math.PI * 0.6;
-    const sw = tq < 15.8 ? 0.7 * Math.sin(tq * 24 + i) : 0;
-    L.applyPose(f, { ...L.REST, legR: sw, legL: -sw, armR: 1.0 - sw, armL: 1.0 + sw, lean: tq < 15.8 ? 0.25 : -0.1, bodyZ: tq > 16.0 ? 0.25 * Math.sin(tq * 14 + i) : 0 });
-    const dizzy = tq > 15.8;
-    f.faceTex.draw((c) => drawFace(c, 'claude', { ...F0, eyes: dizzy ? 'spiral' : 'open', mouth: dizzy ? 'wavy' : 'grin', brow: dizzy ? -0.6 : 0.4, browY: 0.3 }, tq + i));
-    f.parts.spark.rotation.z = sparkAngle(tq) * (1 + i * 0.3);
-  });
-
-  // --- the F-14 (17.6 .. 19.3), right to left, banking
+  // poof puffs where the Sinas vanish
   {
-    const p = prog(t, 17.55, 19.3);
-    show(w.jet, p > 0 && p < 1);
-    w.jet.position.set(lerp(9.5, -10.5, p), 5.4 - 0.6 * Math.sin(Math.PI * p), -6.0 + 1.5 * Math.sin(Math.PI * p));
-    w.jet.rotation.set(0.5 * Math.sin(p * 6) * 0.3 - 0.45, Math.PI + 0.25, 0.1);
+    const on = t > RANT_OUT && t < RANT_OUT + 0.7;
+    w.poofs.group.visible = on;
+    if (on) {
+      const ph = prog(t, RANT_OUT, RANT_OUT + 0.7);
+      w.poofs.list.forEach((s, i) => { const [x, z, h] = CLONE_POS[i]; s.position.set(x, h + 2.2 + ph * 0.6, z); s.scale.setScalar(1.5 + ph * 3); s.material.opacity = 0.85 * (1 - ph); });
+    }
   }
-  // --- the capsule (20.0 .. 22.4): drops, bounces, rolls away
+  // Claude splits into three on "ten wishes, ten styles", they collide on "I still..."
   {
-    const t0 = 19.95;
-    show(w.pill, t > t0 && t < 22.6);
+    const c0 = T('job', 0.05), crash = Wd('job', 6, -0.15), gone = TE('job', 0.1);
+    w.cClones.forEach((f, i) => {
+      const k = scaleIn(f.root, t, c0 + i * 0.08, gone, 0.25);
+      if (k <= 0) return;
+      const run = clamp((tq - c0) / (crash - c0)), a0 = (i / 3) * TAU + 0.6, hit = tq > crash;
+      const ang = a0 + run * 7;
+      // the circle is wide enough that no clone passes through Claude; on the crash they stop dead, bounce and go dizzy
+      const r = 1.9;
+      f.root.position.set(S.CX + Math.cos(ang) * r, hit && tq < crash + 0.3 ? 0.25 * Math.sin(Math.PI * prog(tq, crash, crash + 0.3)) : 0, Math.sin(ang) * r * 0.62 + 0.3);
+      f.root.rotation.y = hit ? -ang + Math.PI * 0.6 : -ang;
+      const sw = hit ? 0 : 0.7 * Math.sin(tq * 24 + i);
+      L.applyPose(f, { ...L.REST, legR: sw, legL: -sw, armR: 1.0 - sw, armL: 1.0 + sw, lean: hit ? -0.1 : 0.25, bodyZ: hit ? 0.25 * Math.sin(tq * 14 + i) : 0 });
+      f.faceTex.draw((c) => drawFace(c, 'claude', { ...F0, eyes: hit ? 'spiral' : 'open', mouth: hit ? 'wavy' : 'grin', brow: hit ? -0.6 : 0.4, browY: 0.3 }, tq + i));
+      f.parts.spark.rotation.z = sparkAngle(tq) * (1 + i * 0.3);
+    });
+  }
+  // the F-14 crosses behind on "F-14 Tomcat"
+  {
+    const a = Wd('jobs3', 2, -0.3), p = prog(t, a, a + 1.9);
+    w.jet.visible = p > 0 && p < 1;
+    w.jet.position.set(lerp(11, -12, p), 6.7 - 0.4 * Math.sin(Math.PI * p), -7.5 + 1.0 * Math.sin(Math.PI * p));
+    w.jet.rotation.set(0.15 * Math.sin(p * 6) - 0.45, Math.PI + 0.25, 0.1);
+  }
+  // the capsule lands on "absorption", bounces, rolls off
+  {
+    const land = Wd('jobs3', 6, -0.05), t0 = land - 0.42;
+    w.pill.visible = t > t0 && t < Wd('jobs3', 8, 0.4);
     if (w.pill.visible) {
       const tt = t - t0;
-      let y;
-      if (tt < 0.42) y = 7.5 - 0.5 * 40 * tt * tt;
-      else { const b = tt - 0.42; y = Math.abs(Math.sin(b * 6)) * 1.2 * Math.exp(-b * 2.2); }
-      y = Math.max(0, y) + 0.45;
-      const roll = E.inCubic(prog(t, 21.7, 22.6));
-      w.pill.position.set(S.CX + 1.15 + roll * 7, y, 1.0);
+      let y = tt < 0.42 ? 7.5 - 0.5 * 40 * tt * tt : Math.abs(Math.sin((tt - 0.42) * 6)) * 1.2 * Math.exp(-(tt - 0.42) * 2.2);
+      const roll = E.inCubic(prog(t, Wd('jobs3', 8, -0.4), Wd('jobs3', 8, 0.4)));
+      w.pill.position.set(S.CX + 1.15 + roll * 7, Math.max(0, y) + 0.45, 1.0);
       w.pill.rotation.set(0, 0.4, -roll * 10 + (tt < 0.42 ? tt * 4 : 0));
     }
   }
-  // --- reference cards (29.2 .. 34.3)
+  // reference tiles: three on "three", four on his head on "four more", one more on "one more"
   {
-    const drops = [[29.2, -2.6, 0.9, 0], [29.45, -0.5, 1.2, 0], [29.7, -1.9, 1.7, 0], [31.5, -1.35, 0.15, 1], [31.7, -1.35, 0.15, 2], [31.9, -1.35, 0.15, 3], [32.1, -1.35, 0.15, 4], [32.9, -1.35, 0.15, 5]];
-    const claudeTop = 4.0 - 1.2 * E.outCubic(prog(t, 31.7, 32.0)) - 0.5 * E.outCubic(prog(t, 32.9, 33.05)) + 1.7 * E.outBack(prog(t, 33.45, 33.7));
+    const d3 = Wd('refs', 4), d4 = Wd('refs', 5), d1 = Wd('refs', 7), out = T('uni', -0.35);
+    const drops = [[d3 - 0.5, -2.6, 0.9, 0], [d3 - 0.38, -0.5, 1.2, 0], [d3 - 0.26, -1.9, 1.7, 0],
+      [d4 - 0.45, -1.35, 0.15, 1], [d4 - 0.33, -1.35, 0.15, 2], [d4 - 0.21, -1.35, 0.15, 3], [d4 - 0.09, -1.35, 0.15, 4], [d1 - 0.35, -1.35, 0.15, 5]];
+    const top = 4.0 - 1.2 * E.outCubic(prog(t, d4 - 0.3, d4)) - 0.5 * E.outCubic(prog(t, d1 - 0.05, d1 + 0.1)) + 1.7 * E.outBack(prog(t, out, out + 0.25));
     w.cards.forEach((c, i) => {
-      const [t0, x, z, stackIdx] = drops[i];
-      const vis = t > t0 && t < 34.6;
-      c.visible = vis;
-      if (!vis) return;
+      const [t0, x, z, idx] = drops[i];
+      c.visible = t > t0 && t < out + 1.1;
+      if (!c.visible) return;
       const fall = clamp((t - t0) / 0.45);
-      const restY = stackIdx === 0 ? 0.06 : Math.max(0.06, claudeTop - 0.2) + stackIdx * 0.13;
-      let y = lerp(9, restY, E.inQuad(fall));
+      let y = lerp(9, idx === 0 ? 0.06 : Math.max(0.06, top - 0.2) + idx * 0.13, E.inQuad(fall));
       let x2 = x, z2 = z, ry = i * 0.7, rx = (1 - fall) * 3;
-      // scatter when Claude pops out
-      const sc = prog(t, 33.45, 34.4);
-      if (sc > 0) {
-        const dir = (i * 2.399) % TAU;
-        x2 += Math.cos(dir) * sc * 4; z2 += Math.sin(dir) * sc * 2.5 + sc;
-        y = y + 3.5 * sc - 6 * sc * sc; rx += sc * 8; ry += sc * 5;
-      }
-      c.position.set(x2, y, z2); c.rotation.set(rx, ry, stackIdx ? Math.sin(i) * 0.15 : 0);
+      const sc = prog(t, out, out + 0.95);
+      if (sc > 0) { const dir = (i * 2.399) % TAU; x2 += Math.cos(dir) * sc * 4; z2 += Math.sin(dir) * sc * 2.5 + sc; y += 3.5 * sc - 6 * sc * sc; rx += sc * 8; ry += sc * 5; }
+      c.position.set(x2, y, z2); c.rotation.set(rx, ry, idx ? Math.sin(i) * 0.15 : 0);
     });
-    // Claude squashes under the pile
-    if (t > 31.7 && t < 33.45) {
-      const sq = 0.18 * E.outCubic(prog(t, 31.7, 32.0)) + 0.14 * E.outCubic(prog(t, 32.9, 33.05));
+    if (t > d4 - 0.3 && t < out) {
+      const sq = 0.18 * E.outCubic(prog(t, d4 - 0.3, d4)) + 0.14 * E.outCubic(prog(t, d1 - 0.05, d1 + 0.1));
       w.claude.body.scale.set(1 + sq * 0.6, 1 - sq, 1 + sq * 0.6);
     }
   }
-  // graduation cap, on Claude's head with the spark poking through
+  // graduation cap, the spark poking through
+  if (scaleIn(w.cap, t, T('uni', -0.2), T('rules', -0.4), 0.25) > 0) { w.cap.position.y = 0.02; w.cap.rotation.y = 0.3; }
+  // the rules scroll: unrolls on "your rules", each rule lights up as it is read, the first one glitches
   {
-    const k = scaleIn(w.cap, t, 33.6, 36.1, 0.25);
-    if (k > 0) { w.cap.position.y = 0.02; w.cap.rotation.y = 0.3; }
-  }
-  // --- the rules scroll (36.3 .. 42.8)
-  {
-    const vis = t > 36.3 && t < 40.5;
+    const vis = t > T('rules', 0.05) && t < T('doom', 0.15);
     w.scroll.group.visible = vis;
     if (vis) {
-      const unroll = E.outCubic(prog(t, 36.6, 39.0));
-      const hangTop = 3.55, fold = E.inCubic(prog(t, 40.0, 40.45));
-      w.scroll.layout(S.CX, hangTop * (1 - fold) + 0.05, 0.85, unroll * 5.4 * (1 - fold));
-      w.scroll.group.visible = fold < 0.98;
-      // the glitch gag: rule one glitches for a quarter second, then the buzzer
-      const g = t > 38.9 && t < 39.15 ? 1 : 0;
-      const want = g ? `g${Math.floor(t * 30)}` : 'clean';
-      if (w.scroll.state !== want) { w.scroll.paint(g, Math.floor(t * 30)); w.scroll.state = want; }
+      const unroll = E.outCubic(prog(t, T('rules', 0.25), T('rulesRead', 0.2)));
+      const fold = E.inCubic(prog(t, T('doom', -0.3), T('doom', 0.1)));
+      w.scroll.layout(S.CX, 3.55 * (1 - fold) + 0.05, 0.85, unroll * 5.4 * (1 - fold));
+      const reads = [Wd('rulesRead', 0), Wd('rulesRead', 2), Wd('rulesRead', 4), Wd('rulesRead', 6)];
+      let hl = -1; reads.forEach((r, i) => { if (t >= r - 0.05) hl = i; });
+      if (t > TE('rulesRead', 0.2)) hl = -1;
+      const g0 = Wd('rulesRead', 0, 0.05), glitch = t > g0 && t < g0 + 0.25 ? 1 : 0;
+      const want = glitch ? `g${Math.floor(t * 24)}` : `h${hl}`;
+      if (w.scroll.state !== want) { w.scroll.paint(glitch, Math.floor(t * 24), hl); w.scroll.state = want; }
     }
   }
-  // --- steam puffs (40.5 .. 42.6)
+  // steam out of Claude's head on "I'm doomed"
   {
-    const on = t > 40.5 && t < 42.8;
+    const on = t > T('doom') && t < TE('doom', 0.4);
     w.puffs.group.visible = on;
     if (on) {
       const head = new THREE.Vector3(); w.claude.parts.headTop.getWorldPosition(head);
       w.puffs.list.forEach((s, i) => {
-        const per = 0.6, ph = ((t - 40.5) / per + i / w.puffs.list.length) % 1;
-        const side = i % 2 ? 1 : -1;
+        const ph = ((t - T('doom')) / 0.6 + i / w.puffs.list.length) % 1, side = i % 2 ? 1 : -1;
         s.position.set(head.x + side * (0.35 + ph * 0.8), head.y - 0.2 + ph * 1.6, head.z + 0.1);
-        s.scale.setScalar(0.4 + ph * 1.4);
-        s.material.opacity = 0.9 * (1 - ph);
+        s.scale.setScalar(0.4 + ph * 1.4); s.material.opacity = 0.9 * (1 - ph);
       });
     }
   }
-  // --- Hiro's pedestal (42.8 .. 53.6)
+  // Hiro's shrine
   {
-    const up = E.outBack(prog(t, 42.8, 43.7), 1.2) * (1 - E.inCubic(prog(t, 53.4, 54.2)));
+    const up = E.outBack(prog(t, T('hiro', -0.45), T('hiro', 0.45)), 1.2) * (1 - E.inCubic(prog(t, T('eye', -0.3), T('eye', 0.5))));
     w.ped.group.position.y = -6 + 6 * up; w.ped.group.visible = up > 0.001;
     w.ped.crown.rotation.y = t * 1.2;
     w.ped.crown.position.y = 2.4 + L.PLATE + 2.75 + 0.08 * Math.sin(t * 3);
-    w.hiroStack.tiles.forEach((tile, i) => { const k = scaleIn(tile, t, 44.9 + i * 0.08, 47.75, 0.18); if (k > 0) tile.position.y = i * (L.PLATE + 0.005) + (1 - k) * 0.5; });
-    w.myStack.tiles.forEach((tile, i) => { const k = scaleIn(tile, t, 45.9 + i * 0.25, 47.75, 0.2); if (k > 0) tile.position.y = i * (L.PLATE + 0.005); });
+    const h0 = Wd('hiro2', 2), m0 = Wd('hiro2', 4, 0.1), gone = TE('hiro2', 0.05);
+    w.hiroStack.tiles.forEach((tile, i) => { const k = scaleIn(tile, t, h0 + i * 0.06, gone, 0.18); if (k > 0) tile.position.y = i * (L.PLATE + 0.005) + (1 - k) * 0.5; });
+    w.myStack.tiles.forEach((tile, i) => { const k = scaleIn(tile, t, m0 + i * 0.25, gone, 0.2); if (k > 0) tile.position.y = i * (L.PLATE + 0.005); });
   }
-  // --- confetti (59.3)
-  w.conf.at(t - 59.3, [0, 4.2, 0.5]);
-  w.conf.mesh.visible = t > 59.3 && t < 62.9;
-  // --- mistake brick -> rule brick (61.4 .. 64.6)
-  {
-    const k = scaleIn(w.lbrick.group, t, 61.4, 64.4, 0.35);
-    if (k > 0) {
-      const flip = E.outBack(prog(t, 63.0, 63.55), 1.6);
-      w.lbrick.group.position.set(0, 1.4 + 0.12 * Math.sin(t * 2.4) + 0.7 * Math.sin(Math.PI * prog(t, 63.0, 63.55)), 1.4);
-      w.lbrick.group.rotation.set(0.15, -0.25 + flip * Math.PI, 0);
-    }
+  // confetti on "it really is good"
+  w.conf.at(t - Wd('yay', 4, 0.25), [0, 2.6, 0.8]);
+  w.conf.mesh.visible = t > Wd('yay', 4, 0.25) && t < Wd('yay', 4, 3.7);
+  // the mistake brick flips into a rule brick
+  if (scaleIn(w.lbrick.group, t, T('once', 0.1), TE('once', 0.5), 0.35) > 0) {
+    const f0 = Wd('once', 7, -0.1), flip = E.outBack(prog(t, f0, f0 + 0.55), 1.6);
+    w.lbrick.group.position.set(0, 1.4 + 0.12 * Math.sin(t * 2.4) + 0.7 * Math.sin(Math.PI * prog(t, f0, f0 + 0.55)), 1.4);
+    w.lbrick.group.rotation.set(0.15, -0.25 + flip * Math.PI, 0);
   }
-  // --- tomato timer + brick timeline (65.3 .. 67.9)
+  // his tools: the tomato timer and the brick timeline
   {
-    const k = scaleIn(w.tom.group, t, 65.3, 67.7, 0.35);
-    if (k > 0) {
-      const ang = -prog(t, 65.6, 67.7) * TAU * 0.9;
+    const a = T('tools', -0.05), b = T('iran', 0.3);
+    if (scaleIn(w.tom.group, t, a, b, 0.35) > 0) {
+      const ang = -prog(t, a + 0.2, b) * TAU * 0.9;
       w.tom.dialTex.draw((c, W_, H_) => {
         c.translate(W_ / 2, H_ / 2);
         c.fillStyle = '#FFF6EA'; c.beginPath(); c.arc(0, 0, 118, 0, TAU); c.fill();
         c.fillStyle = 'rgba(224,54,44,.85)'; c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, 110, -Math.PI / 2, -Math.PI / 2 + ang, true); c.closePath(); c.fill();
-        c.strokeStyle = '#3A2A20'; c.lineWidth = 6; for (let i = 0; i < 12; i++) { const a2 = i / 12 * TAU; c.beginPath(); c.moveTo(Math.cos(a2) * 96, Math.sin(a2) * 96); c.lineTo(Math.cos(a2) * 112, Math.sin(a2) * 112); c.stroke(); }
+        c.strokeStyle = '#3A2A20'; c.lineWidth = 6; for (let i = 0; i < 12; i++) { const a2 = (i / 12) * TAU; c.beginPath(); c.moveTo(Math.cos(a2) * 96, Math.sin(a2) * 96); c.lineTo(Math.cos(a2) * 112, Math.sin(a2) * 112); c.stroke(); }
         c.fillStyle = '#3A2A20'; c.font = `900 54px ${O.FA}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(O.faNum(25), 0, 4);
       });
-      w.tom.group.rotation.y = -0.5 + 0.08 * Math.sin(t * 20) * (1 - prog(t, 65.3, 65.8));
+      w.tom.group.rotation.y = -0.5 + 0.08 * Math.sin(t * 20) * (1 - prog(t, a, a + 0.5));
     }
-    const kt = scaleIn(w.tl.group, t, 65.9, 67.7, 0.3) * 0.42; if (kt > 0) w.tl.group.scale.setScalar(kt);
+    const kt = scaleIn(w.tl.group, t, a + 0.25, b, 0.3, 0.42);
     if (kt > 0) {
-      w.tl.clips.forEach((c, i) => { const ki = E.outBack(prog(t, 66.0 + i * 0.08, 66.25 + i * 0.08), 2); c.visible = ki > 0.01; c.scale.set(1, Math.max(0.01, ki), 1); });
-      w.tl.head.position.x = lerp(-4.6, 4.6, prog(t, 66.8, 67.8));
-      w.tl.group.rotation.y = 0.0;
+      w.tl.clips.forEach((c, i) => { const ki = E.outBack(prog(t, a + 0.35 + i * 0.07, a + 0.6 + i * 0.07), 2); c.visible = ki > 0.01; c.scale.set(1, Math.max(0.01, ki), 1); });
+      w.tl.head.position.x = lerp(-4.6, 4.6, prog(t, a + 1.0, b));
     }
   }
-  // --- the framed portrait (73.3 .. 75.7), held up by Claude
-  {
-    const k = scaleIn(w.frame, t, 73.35, 75.5, 0.3);
-    if (k > 0) {
-      const hp = new THREE.Vector3(), hp2 = new THREE.Vector3();
-      w.claude.parts.handR.getWorldPosition(hp); w.claude.parts.handL.getWorldPosition(hp2);
-      w.frame.position.set((hp.x + hp2.x) / 2, (hp.y + hp2.y) / 2 + 0.3, (hp.z + hp2.z) / 2 + 0.25);
-      w.frame.rotation.set(-0.05, w.claude.root.rotation.y * 0.6, 0.04 * Math.sin(t * 3));
-    }
+  // the framed portrait, held at the chest so his face stays in view
+  if (scaleIn(w.frame, t, T('photo', -0.1), TE('photo', 0.3), 0.3) > 0) {
+    const a = new THREE.Vector3(), b = new THREE.Vector3();
+    w.claude.parts.handR.getWorldPosition(a); w.claude.parts.handL.getWorldPosition(b);
+    w.frame.position.set((a.x + b.x) / 2, (a.y + b.y) / 2 - 0.12, (a.z + b.z) / 2 + 0.3);
+    w.frame.rotation.set(-0.05, w.claude.root.rotation.y * 0.6, 0.04 * Math.sin(t * 3));
   }
-  // --- coffee cups (76.0 .. 83)
+  // coffee: in hand for the toast, Claude's cup flies off when he faints
   {
-    const k1 = scaleIn(w.cupC, t, 76.0, 1e9, 0.25), k2 = scaleIn(w.cupS, t, 76.1, 1e9, 0.25);
+    scaleIn(w.cupC, t, T('tired', -0.3), FAINT, 0.25);
+    // Sina puts his cup away to hold up the new rule, and has it back once the rule has dropped
+    const back = Wd('new', 4, 0.7);
+    if (t < back) scaleIn(w.cupS, t, T('tired', -0.2), Wd('new', 1, -0.3), 0.25); else scaleIn(w.cupS, t, back, 1e9, 0.25);
     for (const c of [w.cupC, w.cupS]) { c.position.set(0, 0.18, 0.28); c.rotation.set(-0.2, 0, 0); }
-    if (t > 82.7) {
-      // Claude's cup flies off as he faints
-      w.cupC.visible = false;
+    const on = t >= FAINT && t < FAINT + 2.5;
+    w.cupFly.visible = on;
+    if (on) {
+      const tt = t - FAINT, [x0, y0, z0] = CUP0;
+      const land = 0.75, y = tt < land ? y0 + 3.2 * tt - 0.5 * 14 * tt * tt : 0.3;
+      w.cupFly.position.set(x0 - 1.3 * Math.min(tt, land) / land, Math.max(0.3, y), z0 + 1.0 * Math.min(tt, land) / land);
+      w.cupFly.rotation.set(Math.min(tt, land) * 9, 0, tt < land ? tt * 4 : Math.PI / 2);
     }
   }
-  // --- Sina's new scroll (81.3 .. 88), unrolls toward Claude along the floor
+  // the new rule: Sina holds it up to us on "just...", it drops and rolls out toward us on "new"
   {
-    const vis = t > 81.4;
-    w.scroll2.group.visible = vis;
-    if (vis) {
-      const un = E.outCubic(prog(t, 81.6, 82.8));
-      w.scroll2.layout(0, 2.4, 0, un * 3.4);
-      w.scroll2.group.position.set(w.sina.root.position.x - 0.35, 0, 0.7);
-      w.scroll2.group.rotation.y = -Math.PI / 2;
+    const up = Wd('new', 1, -0.05), drop = Wd('new', 4, 0.1);
+    w.scroll2.group.visible = t > up;
+    if (t > up) {
+      const hang = 0.05 + 1.75 * E.outCubic(prog(t, up, up + 0.45));
+      const fall = E.inCubic(prog(t, drop, drop + 0.3));
+      const roll = E.outCubic(prog(t, drop + 0.25, drop + 0.95));
+      // the top rod sits in his hands until it drops
+      const a = new THREE.Vector3(), b = new THREE.Vector3();
+      w.sina.parts.handR.getWorldPosition(a); w.sina.parts.handL.getWorldPosition(b);
+      const top = Math.min(a.y, b.y) - 0.04;
+      w.scroll2.layout(0, lerp(top, 0.06, fall), 0, roll * 4.2, fall >= 1 ? 99 : hang);
+      w.scroll2.group.position.set((a.x + b.x) / 2, 0, (a.z + b.z) / 2 + 0.12);
+      w.scroll2.group.rotation.y = w.sina.root.rotation.y * 0.6;
+      w.scroll2.group.scale.set(0.9, 1, 1);
     }
   }
-  // --- the spark pops off when Claude faints (83.3 ..)
+  // the spark pops off as Claude lands, and bounces
   {
-    const on = t >= 83.3;
+    const on = t >= POP;
     w.looseSpark.visible = on;
     if (on) {
-      const tt = t - 83.3;
-      const [x0, y0, z0] = sparkStart();
-      let y; const g = 14;
-      if (tt < 0.62) y = y0 + 4.2 * tt - 0.5 * g * tt * tt;
-      else { const b = tt - 0.62; y = Math.max(0, Math.abs(Math.sin(b * 5)) * 0.9 * Math.exp(-b * 2.5)); }
+      const tt = t - POP, [x0, y0, z0] = SPARK0;
+      const y = tt < 0.62 ? y0 + 4.2 * tt - 0.5 * 14 * tt * tt : Math.abs(Math.sin((tt - 0.62) * 5)) * 0.9 * Math.exp(-(tt - 0.62) * 2.5);
       w.looseSpark.position.set(x0 + 1.4 * Math.min(tt, 1.2), Math.max(0.16, y + 0.16), z0 + 1.2 * Math.min(tt, 1.2));
       w.looseSpark.rotation.set(-Math.PI / 2 * clamp(tt), 0, tt * 8 * Math.exp(-tt));
     }
   }
 }
 
-// where the spark sits at the moment it pops off (a constant of the film, computed once)
-let SPARK0 = null;
-function sparkStart() {
-  if (SPARK0) return SPARK0;
-  actor(W3.claude, 'C', 83.3);
-  const p = new THREE.Vector3(); W3.claude.parts.spark.getWorldPosition(p);
-  SPARK0 = [p.x, p.y, p.z];
-  return SPARK0;
-}
-
 // ---------------------------------------------------------------- 2-D overlays
 const v3 = new THREE.Vector3();
 function screen(obj, off = [0, 0, 0]) {
-  v3.set(...off);
-  obj.localToWorld(v3);
-  v3.project(W3.cam);
+  v3.set(...off); obj.localToWorld(v3); v3.project(W3.cam);
   return [(v3.x + 1) / 2 * W, (1 - v3.y) / 2 * H, v3.z];
 }
-const CUTS = [10.85, 27.4, 47.8];
+// bubbles end at the next line, at hard cuts, and never before their words are said
+const CUTS = [TE('ask', -0.08), Wd('ten', 7, 0.6), T('refs', -0.42), T('rules', -0.35), T('hiro', -0.45), TE('hiro2', 0.1)];
 function lineEnd(i) {
   const l = S.LINES[i], nx = S.LINES[i + 1];
-  let e = Math.min(nx ? nx.t - 0.06 : 1e9, l.t + l.d + 0.75);
+  let e = Math.min(nx ? nx.t - 0.06 : DUR, SPEECH.get(l).end + 0.7);
   for (const c of CUTS) if (l.t < c && e > c) e = c;
-  // a real take may run longer than its slot: keep the bubble up until it has been said
-  e = Math.max(e, Math.min(nx ? nx.t - 0.06 : 1e9, SPEECH.get(l).end + 0.35));
-  return e;
+  return Math.max(e, Math.min(nx ? nx.t - 0.06 : DUR, SPEECH.get(l).end + 0.25));
 }
 
-function overlays(ctx, t) {
+function overlays(ctx, t, IMG) {
   const w = W3;
   const headC = screen(w.claude.parts.head, [0, 0.42, 0.45]), topC = screen(w.claude.parts.headTop, [0, 0.8, 0]);
   const headS = screen(w.sina.parts.head, [0, 0.3, 0.45]), topS = screen(w.sina.parts.headTop, [0, 0.4, 0]);
 
-  // loading bar over Claude (4.1 .. 5.5)
-  if (t > 4.1 && t < 5.6) {
-    const k = E.outBack(prog(t, 4.1, 4.3), 2) * (1 - prog(t, 5.4, 5.6));
-    const p = E.inOutCubic(prog(t, 4.25, 5.25));
-    const x = clamp(headC[0], 260, W - 260), y = Math.max(topC[1] - 90, 330);
-    ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
-    ctx.fillStyle = '#1F1B2E'; ctx.beginPath(); ctx.roundRect(-220, -52, 440, 104, 52); ctx.fill();
-    ctx.fillStyle = '#3A3550'; ctx.beginPath(); ctx.roundRect(-190, 4, 380, 22, 11); ctx.fill();
-    ctx.fillStyle = '#D97757'; ctx.beginPath(); ctx.roundRect(190 - 380 * p, 4, 380 * p, 22, 11); ctx.fill();   // fills right to left
-    ctx.fillStyle = '#FFF8EE'; ctx.font = `800 34px ${O.FA}`; ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText('در حال تحلیل سینا…', 185, -22);
-    ctx.textAlign = 'left'; ctx.fillText(O.faNum(Math.round(p * 100)) + '٪', -185, -22);
-    ctx.restore();
-  }
-  // clone tags (11.0 .. 14.3): right to left, morning first
+  // the scan: Claude reads Sina's own selfie before answering
   {
-    const tags = [['صبح · تدوینگر', 'sunrise'], ['ظهر · گرافیست', 'sun'], ['عصر · موشن‌دیزاینر', 'sunset'], ['شب · پرامپت‌نویس', 'moon']];
-    w.sClones.forEach((f, i) => {
-      const t0 = 10.9 + i * 0.5;
-      const k = E.outBack(prog(t, t0, t0 + 0.3), 2) * (1 - E.inBack(prog(t, 13.3, 13.55)));
-      if (k <= 0 || !f.root.visible) return;
-      const p = screen(f.parts.headTop, [0, 0.55, 0]);
-      const y = p[1] - 110 - (i % 2) * 100, x = clamp(p[0], 200, W - 200);
-      // a leader line from the tag down to its Sina
-      ctx.save(); ctx.globalAlpha = clamp(k); ctx.strokeStyle = 'rgba(22,22,26,.75)'; ctx.lineWidth = 5; ctx.setLineDash([2, 10]); ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(x, y + 30); ctx.lineTo(p[0], p[1] - 10); ctx.stroke(); ctx.restore();
-      O.tag(ctx, tags[i][0], x, y, k, { size: 34, icon: tags[i][1], bg: i === 3 ? '#262A4A' : '#16161A', iconColor: i === 3 ? '#E9ECFF' : '#FFC93C' });
-    });
-  }
-  // line art around the floating Claude (22.2 .. 24.5)
-  if (t > 22.2 && t < 24.6) {
-    const p = prog(t, 22.3, 23.6) * (1 - prog(t, 24.3, 24.6));
-    const c = screen(w.claude.parts.torso, [0, 0.9, 0]);
-    ctx.save(); ctx.globalAlpha = 1 - prog(t, 24.3, 24.6);
-    O.lineArt(ctx, c[0], c[1], 300, prog(t, 22.3, 23.8), t, '#6B4A2A');
-    ctx.restore();
-  }
-  // question marks (25.0 ..)
-  if (t > 24.95 && t < 27.4) {
-    [[25.0, -1, 0, 120], [25.3, 1, -70, 150], [25.6, -1, -260, 100]].forEach(([t0, sd, dy, sz], i) => {
-      const k = E.outBack(prog(t, t0, t0 + 0.25), 2.5) * (1 - prog(t, 27.0, 27.35));
-      if (k <= 0) return;
-      O.bigText(ctx, '؟', clamp(headC[0] + sd * 330, 120, W - 120), Math.max(700, headC[1] - 60) + dy + 10 * Math.sin(t * 4 + i), sz, '#2A1F1A', k, 900, '#FFF8EE');
-    });
-  }
-  // the complaint stamp (27.5 ..) and the chapter tag
-  if (t > 27.45 && t < 28.6) {
-    const k = lerp(3.2, 1, E.outCubic(prog(t, 27.45, 27.6))) * (1 - E.inBack(prog(t, 28.3, 28.55)));
-    O.stamp(ctx, 'گلایه‌ها!', W / 2, H * 0.3, k, -0.12, { size: 150, fill: 'rgba(255,248,238,.92)' });
-  }
-  // card counters
-  {
-    const cnt = [[29.8, '۳', 31.2], [32.2, '+۴', 32.85], [32.95, '+۱', 33.45]];
-    for (const [t0, s, t1] of cnt) {
-      const k = E.outBack(prog(t, t0, t0 + 0.2), 3) * (1 - prog(t, t1, t1 + 0.12));
-      if (k > 0) O.bigText(ctx, s, clamp(headC[0] + 300, 200, W - 200), clamp(headC[1] + 160, 700, 1300), 150, '#FFF8EE', k, 900, '#B8261C', 'ltr');
+    const a = TE('ask', -0.05), b = T('sure', 0.35);
+    if (t > a && t < b + 0.2) {
+      const k = E.outBack(prog(t, a, a + 0.25), 1.8) * (1 - E.inBack(prog(t, b, b + 0.2), 1.5));
+      const p = E.inOutCubic(prog(t, a + 0.15, b - 0.15));
+      const x = W / 2, y = 560, pw = 460, ph = 460;
+      ctx.save(); ctx.translate(x, y); ctx.scale(k, k);
+      ctx.fillStyle = 'rgba(16,18,30,.92)'; ctx.beginPath(); ctx.roundRect(-pw / 2 - 24, -ph / 2 - 24, pw + 48, ph + 150, 34); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.roundRect(-pw / 2, -ph / 2, pw, ph, 20); ctx.clip();
+      const im = IMG.selfie;
+      if (im) { const s = pw / (im.width * 0.5); ctx.drawImage(im, -im.width * 0.47 * s, -im.height * 0.4 * s, im.width * s, im.height * s); }
+      // scan line + grid, in Claude's colour
+      ctx.fillStyle = 'rgba(217,119,87,.16)'; for (let gx = -pw / 2; gx < pw / 2; gx += 40) ctx.fillRect(gx, -ph / 2, 1.5, ph); for (let gy = -ph / 2; gy < ph / 2; gy += 40) ctx.fillRect(-pw / 2, gy, pw, 1.5);
+      const sy = -ph / 2 + ((t - a) * 1.6 % 1) * ph;
+      const gr = ctx.createLinearGradient(0, sy - 60, 0, sy); gr.addColorStop(0, 'rgba(217,119,87,0)'); gr.addColorStop(1, 'rgba(217,119,87,.55)');
+      ctx.fillStyle = gr; ctx.fillRect(-pw / 2, sy - 60, pw, 60); ctx.fillStyle = '#FFB38F'; ctx.fillRect(-pw / 2, sy - 3, pw, 4);
+      ctx.restore();
+      ctx.strokeStyle = '#D97757'; ctx.lineWidth = 7;
+      for (const [cx, cy, sx, sy2] of [[-1, -1, 1, 1], [1, -1, -1, 1], [-1, 1, 1, -1], [1, 1, -1, -1]]) {
+        ctx.beginPath(); ctx.moveTo(cx * pw / 2, cy * ph / 2 + sy2 * 48); ctx.lineTo(cx * pw / 2, cy * ph / 2); ctx.lineTo(cx * pw / 2 + sx * 48, cy * ph / 2); ctx.stroke();
+      }
+      ctx.fillStyle = '#3A3550'; ctx.beginPath(); ctx.roundRect(-pw / 2, ph / 2 + 70, pw, 20, 10); ctx.fill();
+      ctx.fillStyle = '#D97757'; ctx.beginPath(); ctx.roundRect(pw / 2 - pw * p, ph / 2 + 70, pw * p, 20, 10); ctx.fill();
+      ctx.fillStyle = '#FFF8EE'; ctx.font = `800 40px ${O.FA}`; ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText('در حال تحلیل سینا…', pw / 2, ph / 2 + 36);
+      ctx.textAlign = 'left'; ctx.fillText(O.faNum(Math.round(p * 100)) + '٪', -pw / 2, ph / 2 + 36);
+      ctx.restore();
     }
   }
-  // the glitch buzzer (39.15 .. 39.8)
-  if (t > 39.12 && t < 39.85) {
-    const k = E.outBack(prog(t, 39.12, 39.25), 3) * (1 - prog(t, 39.7, 39.85));
-    const p = screen(w.scroll.group, [0, 0.2, 0.85 + (1110 / 2700) * 9 - 3.5]);
-    ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(k, k);
-    ctx.strokeStyle = '#E5262E'; ctx.lineWidth = 26; ctx.beginPath(); ctx.arc(0, 0, 150, 0, TAU); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-106, 106); ctx.lineTo(106, -106); ctx.stroke();
-    ctx.restore();
-    O.bigText(ctx, 'گلیچ نه!', p[0], p[1] + 230, 80, '#FFFFFF', k, 900, '#E5262E');
+  // the rant: the role being named, big; an icon over every Sina; a counter with his face
+  {
+    const r = S.ROLES, end = Math.min(TE('jobs3', 0.35), T('job', -0.3));   // off before Claude's next bubble
+    let cur = -1; r.forEach((x, i) => { if (t >= x.t) cur = i; });
+    if (cur >= 0 && t < end + 0.25) {
+      const x = r[cur], k = E.outBack(prog(t, x.t, x.t + 0.22), 2.2) * (1 - E.inBack(prog(t, end, end + 0.22)));
+      const nextT = cur + 1 < r.length ? r[cur + 1].t : end;
+      const kk = Math.min(k, 1 - E.inQuad(prog(t, nextT - 0.06, nextT)) * (cur + 1 < r.length ? 1 : 0));
+      if (kk > 0.01) {
+        ctx.save(); ctx.translate(W / 2, 330); ctx.scale(kk, kk); ctx.rotate((cur % 2 ? 1 : -1) * 0.03);
+        const f1 = `700 40px ${O.FA}`, f2 = `900 76px ${O.FA}`;
+        ctx.font = f2; const w2 = ctx.measureText(x.role).width;
+        const bw = Math.max(w2 + 210, 420), bh = 170;
+        ctx.fillStyle = 'rgba(0,0,0,.22)'; ctx.beginPath(); ctx.roundRect(-bw / 2 + 8, -bh / 2 + 10, bw, bh, 40); ctx.fill();
+        ctx.fillStyle = '#16161A'; ctx.beginPath(); ctx.roundRect(-bw / 2, -bh / 2, bw, bh, 40); ctx.fill();
+        ctx.fillStyle = '#D3121E'; ctx.beginPath(); ctx.roundRect(-bw / 2, -bh / 2, bw, 16, [40, 40, 0, 0]); ctx.fill();
+        O.drawIcon(ctx, x.icon, -bw / 2 + 85, 8, 50, '#FFC93C');
+        ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#FFC93C'; ctx.font = f1; ctx.fillText(x.when, bw / 2 - 40, -36);
+        ctx.fillStyle = '#FFFFFF'; ctx.font = f2; ctx.fillText(x.role, bw / 2 - 40, 30);
+        ctx.restore();
+      }
+    }
+    // icons over the Sinas that have been named
+    w.sClones.forEach((f, i) => {
+      if (!f.root.visible) return;
+      const k = E.outBack(prog(t, r[i].t + 0.1, r[i].t + 0.35), 2) * (1 - prog(t, T('job', -0.05), T('job', 0.1)));
+      if (k <= 0) return;
+      const p = screen(f.parts.headTop, [0, 0.75, 0]);
+      ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(k, k);
+      ctx.fillStyle = i === cur ? '#D3121E' : '#16161A'; ctx.beginPath(); ctx.arc(0, 0, 38, 0, TAU); ctx.fill();
+      ctx.lineWidth = 5; ctx.strokeStyle = '#FFFFFF'; ctx.stroke();
+      O.drawIcon(ctx, r[i].icon, 0, 0, 22, '#FFFFFF');
+      ctx.restore();
+    });
+    // the counter: Sina x n
+    const n = r.filter((x) => t >= x.t).length;
+    const kc = E.outBack(prog(t, r[0].t, r[0].t + 0.25), 2) * (1 - E.inBack(prog(t, T('job', -0.1), T('job', 0.12))));   // gone before Claude's bubble
+    if (n > 0 && kc > 0.01) {
+      const pulse = 1 + 0.12 * bump(t, r[n - 1].t + 0.06, 0.12);
+      ctx.save(); ctx.translate(200, 560); ctx.scale(kc * pulse, kc * pulse);
+      ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.roundRect(-120, -56, 240, 112, 56); ctx.fill();
+      ctx.lineWidth = 6; ctx.strokeStyle = '#D3121E'; ctx.stroke();
+      O.avatar(ctx, 'S', -64, 0, 44);
+      ctx.fillStyle = '#16161A'; ctx.font = `900 64px ${O.FA}`; ctx.direction = 'ltr'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText('×' + O.faNum(n), -12, 4);
+      ctx.restore();
+    }
   }
-  // frazzled marks (40.4 .. 42.6)
-  if (t > 40.4 && t < 42.7) {
-    const k = E.outBack(prog(t, 40.4, 40.6), 2.5) * (1 - prog(t, 42.4, 42.7));
-    const pulse = 1 + 0.15 * Math.sin(t * 18);
-    O.angerMark(ctx, topC[0] + 150, topC[1] + 40, 46 * k * pulse);
+  // the mystical line art around the floating Claude
+  {
+    const a = Wd('jobs3', 8, -0.1), b = T('job', 0.05);
+    if (t > a && t < b + 0.3) {
+      const c = screen(w.claude.parts.torso, [0, 0.9, 0]);
+      ctx.save(); ctx.globalAlpha = 1 - prog(t, b - 0.1, b + 0.3);
+      O.lineArt(ctx, c[0], c[1], 300, prog(t, a + 0.05, a + 1.0), t, '#6B4A2A');
+      ctx.restore();
+    }
+  }
+  // question marks on "I still don't know what my job is"
+  if (t > Wd('job', 6) && t < TE('job', 0.5)) {
+    [[Wd('job', 6), -1, 0, 120], [Wd('job', 8), 1, -70, 150], [Wd('job', 9), -1, -260, 100]].forEach(([t0, sd, dy, sz], i) => {
+      const k = E.outBack(prog(t, t0, t0 + 0.25), 2.5) * (1 - prog(t, TE('job', 0.15), TE('job', 0.5)));
+      if (k > 0) O.bigText(ctx, '؟', clamp(headC[0] + sd * 330, 120, W - 120), Math.max(700, headC[1] - 60) + dy + 10 * Math.sin(t * 4 + i), sz, '#2A1F1A', k, 900, '#FFF8EE');
+    });
+  }
+  // numbered complaints: the stamps
+  for (const [t0, label] of [[T('refs', -0.4), 'گلایه‌ی ۱'], [T('rules', -0.33), 'گلایه‌ی ۲'], [T('hiro', -0.43), 'گلایه‌ی ۳']]) {
+    if (t < t0 || t > t0 + 1.0) continue;
+    const k = lerp(3.0, 1, E.outCubic(prog(t, t0, t0 + 0.15))) * (1 - E.inBack(prog(t, t0 + 0.7, t0 + 0.95)));
+    O.stamp(ctx, label, W / 2, H * 0.42, k, -0.1, { size: 140, fill: 'rgba(255,248,238,.94)' });
+  }
+  // the tile counters, on the words
+  for (const [t0, s, t1] of [[Wd('refs', 4), '۳', Wd('refs', 5, -0.1)], [Wd('refs', 5), '+۴', Wd('refs', 7, -0.1)], [Wd('refs', 7), '+۱', T('uni', -0.4)]]) {
+    const k = E.outBack(prog(t, t0, t0 + 0.2), 3) * (1 - prog(t, t1, t1 + 0.12));
+    if (k > 0) O.bigText(ctx, s, clamp(headC[0] + 300, 200, W - 200), clamp(headC[1] + 160, 700, 1300), 150, '#FFF8EE', k, 900, '#B8261C', 'ltr');
+  }
+  // the glitch buzzer on "forbidden!"
+  {
+    const b0 = Wd('rulesRead', 1);
+    if (t > b0 - 0.05 && t < b0 + 0.6) {
+      const k = E.outBack(prog(t, b0 - 0.05, b0 + 0.08), 3) * (1 - prog(t, b0 + 0.45, b0 + 0.6));
+      const p = screen(w.scroll.group, [0, 0.25, 0.85 + (1110 / 2700) * 9 - 3.5]);
+      ctx.save(); ctx.translate(p[0], p[1]); ctx.scale(k, k);
+      ctx.strokeStyle = '#E5262E'; ctx.lineWidth = 26; ctx.beginPath(); ctx.arc(0, 0, 150, 0, TAU); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-106, 106); ctx.lineTo(106, -106); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // frazzled marks on "I'm doomed"
+  if (t > T('doom') && t < TE('doom', 0.4)) {
+    const k = E.outBack(prog(t, T('doom'), T('doom', 0.2)), 2.5) * (1 - prog(t, TE('doom', 0.1), TE('doom', 0.4)));
+    O.angerMark(ctx, topC[0] + 150, topC[1] + 40, 46 * k * (1 + 0.15 * Math.sin(t * 18)));
     for (let i = 0; i < 4; i++) {
-      const ph = ((t - 40.4) * 1.8 + i / 4) % 1, sd = i % 2 ? 1 : -1;
+      const ph = ((t - T('doom')) * 1.8 + i / 4) % 1, sd = i % 2 ? 1 : -1;
       O.drop(ctx, headC[0] + sd * (160 + ph * 140), headC[1] - 80 + ph * ph * 260 - ph * 120, 22 * k, sd * 0.6);
     }
   }
-  // Hiro: "more projects" chips under the stacks (45 .. 47.7)
-  if (t > 45.0 && t < 47.75) {
-    const hs = screen(w.hiroStack.group, [0, 7 * 0.33, 0]), ms = screen(w.myStack.group, [0, 1.0, 0]);
-    const k1 = E.outBack(prog(t, 45.9, 46.15), 2) * (1 - prog(t, 47.6, 47.75)), k2 = E.outBack(prog(t, 46.2, 46.45), 2) * (1 - prog(t, 47.6, 47.75));
-    O.tag(ctx, 'پروژه‌های هیرو: ' + O.faNum(14), clamp(hs[0], 260, W - 250), clamp(hs[1], 760, 1300), k1, { bg: '#B7791F', size: 36 });
-    O.tag(ctx, 'پروژه‌های من: ' + O.faNum(2), clamp(ms[0], 250, W - 260), clamp(ms[1] - 40, 760, 1400), k2, { bg: '#5A6390', size: 36 });
+  // Hiro: the project counts, on the words
+  {
+    const h0 = Wd('hiro2', 2, 0.3), m0 = Wd('hiro2', 4, 0.3), gone = TE('hiro2', 0.05);
+    if (t > h0 && t < gone + 0.2) {
+      const hs = screen(w.hiroStack.group, [0, 7 * 0.33, 0]), ms = screen(w.myStack.group, [0, 1.0, 0]);
+      O.tag(ctx, 'پروژه‌های هیرو: ' + O.faNum(14), clamp(hs[0], 260, W - 250), clamp(hs[1], 760, 1300), E.outBack(prog(t, h0, h0 + 0.25), 2) * (1 - prog(t, gone, gone + 0.15)), { bg: '#B7791F', size: 38 });
+      if (t > m0) O.tag(ctx, 'پروژه‌های من: ' + O.faNum(2), clamp(ms[0], 250, W - 260), clamp(ms[1] - 40, 760, 1400), E.outBack(prog(t, m0, m0 + 0.25), 2) * (1 - prog(t, gone, gone + 0.15)), { bg: '#5A6390', size: 38 });
+    }
   }
-  // whisper hearts (52.4 .. 53.8)
-  if (t > 52.4 && t < 53.9) {
+  // the deadpan: a silence you can see
+  {
+    const a = TE('hiro2', 0.1), b = T('but', -0.05);
+    if (t > a + 0.15 && t < b) O.bigText(ctx, '…', W - 180, 520, 90, 'rgba(255,255,255,.55)', E.outCubic(prog(t, a + 0.15, a + 0.35)) * (1 - prog(t, b - 0.15, b)), 400);
+  }
+  // hearts after "I'm happy with you"
+  {
+    const a = Wd('psst', 3);
     for (let i = 0; i < 5; i++) {
-      const ph = clamp((t - 52.4 - i * 0.18) / 1.2);
+      const ph = clamp((t - a - i * 0.18) / 1.2);
       if (ph <= 0 || ph >= 1) continue;
       O.heart(ctx, headC[0] + Math.sin(i * 2.3 + ph * 4) * 90 + (i - 2) * 40, headC[1] - 120 - ph * 380, 22 * (1 - ph * 0.4), `rgba(226,50,75,${1 - ph})`);
     }
   }
-  // Sina's sharp eye: a glint (54.6)
-  if (t > 54.5 && t < 55.4) {
-    const k = bump(t, 54.75, 0.3);
-    const e = screen(w.sina.parts.head, [-0.13, 0.37, 0.46]);
-    O.sparkle(ctx, e[0], e[1], 110 * k, t * 4);
+  // a glint in Sina's sharp eye
+  {
+    const a = Wd('eye', 1, 0.2);
+    if (t > a - 0.3 && t < a + 0.5) { const e = screen(w.sina.parts.head, [-0.13, 0.37, 0.46]); O.sparkle(ctx, e[0], e[1], 110 * bump(t, a, 0.3), t * 4); }
   }
-  // the professional stamp (63.5 .. 64.5)
-  if (t > 63.5 && t < 64.6) {
-    const k = lerp(2.4, 1, E.outCubic(prog(t, 63.5, 63.65))) * (1 - E.inBack(prog(t, 64.3, 64.55)));
-    const b = screen(w.lbrick.group, [0, 2.4, 0]);
-    O.stamp(ctx, 'حرفه‌ای', b[0], b[1] - 40, k * 0.75, 0.1, { color: '#8A5A00', size: 110, fill: 'rgba(255,236,170,.92)' });
+  // "professional!" on the rule brick
+  {
+    const a = Wd('once', 9);
+    if (t > a && t < TE('once', 0.55)) {
+      const k = lerp(2.4, 1, E.outCubic(prog(t, a, a + 0.15))) * (1 - E.inBack(prog(t, TE('once', 0.3), TE('once', 0.55))));
+      const b = screen(w.lbrick.group, [0, 2.4, 0]);
+      O.stamp(ctx, 'حرفه‌ای', b[0], b[1] - 40, k * 0.75, 0.1, { color: '#8A5A00', size: 110, fill: 'rgba(255,236,170,.92)' });
+    }
   }
-  // sparkles on the brick flip and the cup clink
-  for (const [t0, obj, off] of [[63.3, w.lbrick.group, [0, 1.2, 0]], [79.62, null, null]]) {
+  // sparkles: the brick turning into a rule, and the toast
+  for (const [t0, obj, off] of [[Wd('once', 9, -0.2), w.lbrick.group, [0, 1.2, 0]], [Wd('tired', 5, 0.05), null, null]]) {
     if (t < t0 || t > t0 + 0.7) continue;
     let p;
     if (obj) p = screen(obj, off);
@@ -644,108 +683,90 @@ function overlays(ctx, t) {
       O.sparkle(ctx, p[0] + Math.cos(a) * r, p[1] + Math.sin(a) * r * 0.8, 34 * (1 - ph), ph * 3, i % 2 ? '#FFF6C8' : '#FFD27A');
     }
   }
-  // work badges (69.0 .. 71.5): right to left
-  {
-    const badges = [['شهرداری', 'building', '#3D7DD8'], ['دامپزشکی', 'paw', '#2FB08A'], ['کلینیک', 'cross', '#E0478E']];
-    badges.forEach(([txt, ic, col], i) => {
-      const t0 = 69.0 + i * 0.45, k = E.outBack(prog(t, t0, t0 + 0.3), 2.2) * (1 - E.inBack(prog(t, 71.5, 71.75)));
-      if (k <= 0) return;
-      const x = W - 230 - i * 310, y = 300 + (i % 2) * 56 + 8 * Math.sin(t * 3 + i);
-      O.tag(ctx, txt, x, y, k, { bg: col, size: 40, icon: ic, iconColor: '#FFFFFF' });
-    });
-  }
-  // the deadpan beat: nothing but a tiny cricket chirp line
-  if (t > 47.95 && t < 48.9) {
-    const k = E.outCubic(prog(t, 48.1, 48.3)) * (1 - prog(t, 48.75, 48.9));
-    O.bigText(ctx, '…', W - 180, 520, 90, 'rgba(255,255,255,.55)', k, 400);
-  }
 
-  // speech bubbles
+  // speech bubbles (the rant and the rule reading speak through the picture instead)
   S.LINES.forEach((l, i) => {
+    if (l.bubble === false) return;
     const end = lineEnd(i);
     if (t < l.t - 0.05 || t > end) return;
     const C = l.who === 'C';
-    const mouth = C ? headC : headS, top = C ? topC : topS;
-    O.bubble(ctx, l, SPEECH.get(l), t, [mouth[0], mouth[1]], top[1], end);
+    O.bubble(ctx, l, SPEECH.get(l), t, C ? [headC[0], headC[1]] : [headS[0], headS[1]], (C ? topC : topS)[1], end);
   });
 
-  // end card (84.6 ..)
-  if (t > 84.5) {
-    const k = E.outBack(prog(t, 84.6, 85.0), 1.6);
-    const k2 = E.outBack(prog(t, 85.2, 85.6), 1.8);
-    ctx.save();
-    ctx.globalAlpha = clamp(prog(t, 84.5, 84.8));
-    const g = ctx.createLinearGradient(0, 0, 0, 900); g.addColorStop(0, 'rgba(244,235,221,.95)'); g.addColorStop(1, 'rgba(244,235,221,0)');
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, 900);
+  // end card: both names, big, with his face
+  const ec = TE('new', 0.3);
+  if (t > ec) {
+    const k = E.outBack(prog(t, ec, ec + 0.4), 1.6), k2 = E.outBack(prog(t, ec + 0.5, ec + 0.9), 1.8);
+    ctx.save(); ctx.globalAlpha = clamp(prog(t, ec - 0.1, ec + 0.2));
+    const g = ctx.createLinearGradient(0, 0, 0, 980); g.addColorStop(0, 'rgba(244,235,221,.97)'); g.addColorStop(1, 'rgba(244,235,221,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, 980);
     ctx.restore();
-    O.bigText(ctx, 'سینا', W / 2 + 190, 470, 150, '#16161A', k, 900);
-    O.bigText(ctx, '×', W / 2, 470, 110, '#D3121E', k, 700);
-    O.bigText(ctx, 'کلاد', W / 2 - 190, 470, 150, '#C8623F', k, 900);
-    O.bigText(ctx, 'یه نفر، پنج‌تا شغل، یه هوش مصنوعیِ خسته', W / 2, 640, 46, '#3A2F28', k2, 700);
-    O.claudeSpark(ctx, W / 2 - 400, 400, 46 * k, '#D97757', t);
+    O.avatar(ctx, 'S', W / 2 + 410, 470, 80 * k);
+    O.avatar(ctx, 'C', W / 2 - 410, 470, 80 * k);
+    O.bigText(ctx, 'سینا', W / 2 + 195, 470, 124, '#16161A', k, 900);
+    O.bigText(ctx, '×', W / 2, 474, 96, '#D3121E', k, 700);
+    O.bigText(ctx, 'کلاد', W / 2 - 195, 470, 124, '#C8623F', k, 900);
+    O.bigText(ctx, 'یه نفر، ده‌تا شغل، یه هوش مصنوعیِ خسته', W / 2, 650, 46, '#3A2F28', k2, 700);
   }
 }
 
 // ---------------------------------------------------------------- sound hits
 // [seconds, label, sfx, opts]; converted to beats (120 bpm, offset 0) for sfx.mjs
 const HIT_S = [
-  [0.05, 'sina leaps in', 'boing', { pitch: 260, to: 520, gain: 0.25 }], [0.6, 'sina lands', 'thud'],
-  [3.9, 'claude freezes', 'pop', { pitch: 'E6' }], [4.2, 'processing', 'type', { len: 1.0 }], [5.3, '100%', 'bell', { pitch: 'A6' }],
-  [7.75, 'claude hop', 'boing', { pitch: 300, to: 600, gain: 0.2 }],
-  [8.6, 'riser rises', 'whoosh', { len: 0.5, from: 300, to: 1500 }], [9.1, 'riser lands', 'thud', { gain: 0.3 }],
-  [9.0, 'clone 1', 'pop', { pitch: 'C6' }], [9.5, 'clone 2', 'pop', { pitch: 'D6' }], [10.0, 'clone 3', 'pop', { pitch: 'E6' }], [10.5, 'clone 4', 'pop', { pitch: 'G6' }],
-  [10.9, 'tag 1', 'click'], [11.4, 'tag 2', 'click'], [11.9, 'tag 3', 'click'], [12.4, 'tag 4', 'click'],
-  [14.2, 'clones vanish', 'pop', { pitch: 'G5', to: 'C5' }], [14.6, 'claude splits', 'pop', { pitch: 'C6' }], [14.68, 'split 2', 'pop', { pitch: 'E6' }], [14.76, 'split 3', 'pop', { pitch: 'G6' }],
-  [15.8, 'clones crash', 'thud'], [15.82, 'crash boing', 'boing', { pitch: 400, to: 150 }], [16.75, 'clones poof', 'pop', { pitch: 'A5', to: 'D5' }],
-  [17.6, 'f-14 flyby', 'whoosh', { len: 1.7, from: 250, to: 3200, gain: 0.45 }],
-  [20.0, 'pill drops', 'whoosh', { len: 0.4, from: 2000, to: 500 }], [20.37, 'pill bounce', 'boing', { pitch: 220, to: 440 }], [20.9, 'pill bounce 2', 'boing', { pitch: 280, to: 500, gain: 0.18 }], [21.75, 'pill rolls', 'whoosh', { len: 0.8, from: 400, to: 1200, gain: 0.2 }],
-  [22.3, 'zen', 'bell', { pitch: 'D6', verb: 0.8 }], [22.9, 'zen 2', 'bell', { pitch: 'A5', verb: 0.8, gain: 0.2 }],
-  [24.45, 'claude drops', 'thud'], [25.0, '? 1', 'tok', { pitch: 'C6' }], [25.3, '? 2', 'tok', { pitch: 'E6' }], [25.6, '? 3', 'tok', { pitch: 'G6' }],
-  [27.45, 'complaints stamp', 'impact'],
-  [29.4, 'card 1', 'thud', { pitch: 140, gain: 0.25 }], [29.65, 'card 2', 'thud', { pitch: 150, gain: 0.25 }], [29.9, 'card 3', 'thud', { pitch: 160, gain: 0.25 }], [29.8, 'counter 3', 'pop', { pitch: 'E6' }],
-  [31.95, 'card 4', 'click'], [32.15, 'card 5', 'click'], [32.35, 'card 6', 'click'], [32.55, 'card 7', 'click'], [32.2, 'counter +4', 'pop', { pitch: 'G6' }],
-  [33.0, 'bonk', 'thud', { pitch: 300, to: 120 }], [32.95, 'counter +1', 'pop', { pitch: 'C7' }],
-  [33.45, 'claude pops out', 'boing', { pitch: 200, to: 800 }], [33.6, 'grad cap', 'bell', { pitch: 'C6' }],
-  [36.6, 'scroll unrolls', 'whoosh', { len: 2.4, from: 300, to: 900, gain: 0.3 }],
-  [38.9, 'glitch', 'blip', { pitch: 'C7', gain: 0.3 }], [38.98, 'glitch b', 'blip', { pitch: 'F#6', gain: 0.3 }], [39.06, 'glitch c', 'click'],
-  [40.0, 'scroll snaps shut', 'whoosh', { len: 0.4, from: 1200, to: 300 }],
-  [42.8, 'hiro reveal', 'crash', { len: 2.5 }], [42.82, 'hiro sub', 'sub', { len: 1.4 }], [43.6, 'crown', 'bell', { pitch: 'E6', verb: 0.6 }],
-  [44.9, 'tiles', 'coins'], [45.9, 'my tile 1', 'tok', { pitch: 'C5' }], [46.15, 'my tile 2', 'tok', { pitch: 'C5' }],
-  [52.35, 'blush', 'blip', { pitch: 'E6' }], [52.5, 'blush 2', 'blip', { pitch: 'G6' }],
-  [53.6, 'into praise', 'swell', { len: 1.2 }], [54.75, 'glint', 'bell', { pitch: 'C7' }],
-  [59.1, 'claude jumps', 'boing', { pitch: 300, to: 900 }], [59.3, 'confetti', 'crash', { len: 1.4, gain: 0.2 }], [59.32, 'confetti coins', 'coins'],
-  [61.4, 'mistake brick', 'pop', { pitch: 'C6' }], [63.0, 'brick flips', 'whoosh', { len: 0.5, from: 500, to: 2500 }], [63.3, 'rule!', 'bell', { pitch: 'G6' }], [63.5, 'professional stamp', 'thud'],
-  [65.3, 'tomato', 'pop', { pitch: 'D6' }],
-  ...Array.from({ length: 8 }, (_, i) => [65.7 + i * 0.25, `tick ${i}`, 'tick']),
-  ...Array.from({ length: 9 }, (_, i) => [66.0 + i * 0.08, `clip ${i}`, 'click', { gain: 0.18 }]),
-  [69.0, 'badge 1', 'pop', { pitch: 'E6' }], [69.45, 'badge 2', 'pop', { pitch: 'G6' }], [69.9, 'badge 3', 'pop', { pitch: 'B6' }],
-  [73.35, 'frame', 'pop', { pitch: 'A5' }], [73.5, 'frame ding', 'bell', { pitch: 'E6' }],
-  [76.0, 'cup 1', 'pop', { pitch: 'D6' }], [76.1, 'cup 2', 'pop', { pitch: 'F6' }], [79.62, 'clink', 'bell', { pitch: 'A6', verb: 0.5 }], [79.64, 'clink 2', 'bell', { pitch: 'E7', gain: 0.18 }],
-  [81.6, 'new scroll', 'whoosh', { len: 1.1, from: 300, to: 1400 }], [82.2, 'shock', 'blip', { pitch: 'A6' }],
-  [82.75, 'faint', 'whoosh', { len: 0.55, from: 1500, to: 200 }], [83.25, 'thud floor', 'thud'], [83.3, 'spark pops', 'boing', { pitch: 300, to: 1100 }],
-  [83.92, 'spark bounce', 'tok', { pitch: 'G5' }], [84.5, 'spark bounce 2', 'tok', { pitch: 'G5', gain: 0.15 }],
-  [84.6, 'end card', 'bell', { pitch: 'F6', verb: 0.5 }], [85.4, 'thumb', 'pop', { pitch: 'C6' }],
+  [0.0, 'sina leaps in', 'boing', { pitch: 260, to: 520, gain: 0.25 }], [0.45, 'sina lands', 'thud'],
+  [TE('ask', -0.05), 'scanner on', 'blip', { pitch: 'E6' }], [TE('ask', 0.1), 'scanning', 'type', { len: 0.8 }], [T('sure', 0.2), 'scan done', 'bell', { pitch: 'A6' }],
+  [Wd('ten', 7, -0.3), 'risers rise', 'whoosh', { len: 0.5, from: 300, to: 1500 }], [Wd('ten', 7, 0.25), 'risers land', 'thud', { gain: 0.3 }],
+  ...S.ROLES.map((r, i) => [r.t, `sina ${i + 1}`, 'pop', { pitch: ['C6', 'D6', 'E6', 'G6', 'A6', 'C7', 'D7', 'E7', 'G7', 'A7'][i], gain: 0.3 }]),
+  [Wd('jobs3', 2, -0.2), 'f-14 flyby', 'whoosh', { len: 1.7, from: 250, to: 3200, gain: 0.45 }],
+  [Wd('jobs3', 6, -0.47), 'pill drops', 'whoosh', { len: 0.4, from: 2000, to: 500 }], [Wd('jobs3', 6, -0.05), 'pill bounce', 'boing', { pitch: 220, to: 440 }],
+  [Wd('jobs3', 8, -0.4), 'pill rolls', 'whoosh', { len: 0.8, from: 400, to: 1200, gain: 0.2 }], [Wd('jobs3', 8), 'zen', 'bell', { pitch: 'D6', verb: 0.8 }],
+  [T('job', 0.05), 'claude splits', 'pop', { pitch: 'C6' }], [T('job', 0.13), 'split 2', 'pop', { pitch: 'E6' }], [T('job', 0.21), 'split 3', 'pop', { pitch: 'G6' }],
+  [Wd('job', 6, -0.15), 'clones crash', 'thud'], [Wd('job', 6, -0.13), 'crash boing', 'boing', { pitch: 400, to: 150 }], [RANT_OUT, 'sinas vanish', 'pop', { pitch: 'G5', to: 'C5' }],
+  [Wd('job', 6), '? 1', 'tok', { pitch: 'C6' }], [Wd('job', 8), '? 2', 'tok', { pitch: 'E6' }], [Wd('job', 9), '? 3', 'tok', { pitch: 'G6' }],
+  [T('refs', -0.4), 'complaint 1', 'impact'],
+  [Wd('refs', 4, -0.05), 'tiles 3', 'thud', { pitch: 150, gain: 0.25 }], [Wd('refs', 4), 'counter 3', 'pop', { pitch: 'E6' }],
+  [Wd('refs', 5, -0.1), 'tiles 4', 'click'], [Wd('refs', 5), 'counter +4', 'pop', { pitch: 'G6' }], [Wd('refs', 7, 0.05), 'bonk', 'thud', { pitch: 300, to: 120 }], [Wd('refs', 7), 'counter +1', 'pop', { pitch: 'C7' }],
+  [T('uni', -0.35), 'claude pops out', 'boing', { pitch: 200, to: 800 }], [T('uni', -0.2), 'grad cap', 'bell', { pitch: 'C6' }],
+  [T('rules', -0.33), 'complaint 2', 'impact'], [T('rules', 0.25), 'scroll unrolls', 'whoosh', { len: 1.8, from: 300, to: 900, gain: 0.3 }],
+  [Wd('rulesRead', 0, 0.05), 'glitch', 'blip', { pitch: 'C7', gain: 0.3 }], [Wd('rulesRead', 0, 0.13), 'glitch b', 'blip', { pitch: 'F#6', gain: 0.3 }],
+  [Wd('rulesRead', 2), 'rule 2', 'tick'], [Wd('rulesRead', 4), 'rule 3', 'tick'], [Wd('rulesRead', 6), 'rule 4', 'tick'],
+  [T('doom', -0.3), 'scroll snaps shut', 'whoosh', { len: 0.4, from: 1200, to: 300 }],
+  [T('hiro', -0.43), 'complaint 3', 'impact'], [T('hiro', -0.3), 'hiro reveal', 'crash', { len: 2.5 }], [T('hiro', 0.4), 'crown', 'bell', { pitch: 'E6', verb: 0.6 }],
+  [Wd('hiro2', 2), 'tiles', 'coins'], [Wd('hiro2', 4, 0.1), 'my tile 1', 'tok', { pitch: 'C5' }], [Wd('hiro2', 4, 0.35), 'my tile 2', 'tok', { pitch: 'C5' }],
+  [Wd('psst', 3), 'blush', 'blip', { pitch: 'E6' }], [Wd('psst', 3, 0.15), 'blush 2', 'blip', { pitch: 'G6' }],
+  [T('eye', -0.5), 'into praise', 'swell', { len: 1.0 }], [Wd('eye', 1, 0.2), 'glint', 'bell', { pitch: 'C7' }],
+  [Wd('yay', 4, -0.05), 'claude jumps', 'boing', { pitch: 300, to: 900 }], [Wd('yay', 4, 0.25), 'confetti', 'crash', { len: 1.4, gain: 0.2 }], [Wd('yay', 4, 0.27), 'confetti coins', 'coins'],
+  [T('once', 0.1), 'mistake brick', 'pop', { pitch: 'C6' }], [Wd('once', 7, -0.1), 'brick flips', 'whoosh', { len: 0.5, from: 500, to: 2500 }], [Wd('once', 9, -0.2), 'rule!', 'bell', { pitch: 'G6' }], [Wd('once', 9), 'professional stamp', 'thud'],
+  [T('tools', -0.05), 'tomato', 'pop', { pitch: 'D6' }], ...Array.from({ length: 6 }, (_, i) => [T('tools', 0.3 + i * 0.25), `tick ${i}`, 'tick']),
+  ...Array.from({ length: 9 }, (_, i) => [T('tools', 0.35 + i * 0.07), `clip ${i}`, 'click', { gain: 0.18 }]),
+  [T('photo', -0.1), 'frame', 'pop', { pitch: 'A5' }], [T('photo', 0.05), 'frame ding', 'bell', { pitch: 'E6' }],
+  [T('tired', -0.3), 'cup 1', 'pop', { pitch: 'D6' }], [T('tired', -0.2), 'cup 2', 'pop', { pitch: 'F6' }], [Wd('tired', 5, 0.02), 'clink', 'bell', { pitch: 'A6', verb: 0.5 }], [Wd('tired', 5, 0.04), 'clink 2', 'bell', { pitch: 'E7', gain: 0.18 }],
+  [Wd('new', 1, -0.05), 'new scroll', 'whoosh', { len: 0.5, from: 300, to: 1400 }], [Wd('new', 3), 'shock', 'blip', { pitch: 'A6' }],
+  [Wd('new', 4, 0.1), 'scroll drops', 'whoosh', { len: 0.8, from: 900, to: 300, gain: 0.25 }],
+  [FAINT, 'faint', 'whoosh', { len: 0.55, from: 1500, to: 200 }], [FAINT + 0.55, 'thud floor', 'thud'], [POP, 'spark pops', 'boing', { pitch: 300, to: 1100 }],
+  [FAINT + 0.75, 'cup lands', 'click'], [POP + 0.62, 'spark bounce', 'tok', { pitch: 'G5' }], [POP + 1.2, 'spark bounce 2', 'tok', { pitch: 'G5', gain: 0.15 }],
+  [TE('new', 0.3), 'end card', 'bell', { pitch: 'F6', verb: 0.5 }], [DUR - 1.5, 'thumb', 'pop', { pitch: 'C6' }],
 ];
-const HITS = HIT_S.map(([t, l, s, o]) => [+(toNew(t) * 2).toFixed(3), l, s, o]);
+const HITS = HIT_S.filter(([t]) => t >= 0 && t < DUR).map(([t, l, s, o]) => [+(t * 2).toFixed(3), l, s, o]);
 
 // ---------------------------------------------------------------- film
+let IMGS = null;
 M.film({
   hits: HITS,
   fonts: ['800 58px Vazir', '900 120px Vazir', '700 40px Vazir', '400 40px Vazir'],
-  images: { portrait: 'assets/ref_portrait.png' },
+  images: { portrait: 'assets/ref_portrait.png', selfie: 'assets/ref_selfie.jpg' },
   samples: 1,
   async init(ctx, IMG) {
+    IMGS = IMG; O.setImages(IMG);
     await G.initGL({ exposure: 1.0, scale: Number(new URLSearchParams(location.search).get('gls') || 0.85) });
     SET = build(IMG);
   },
-  draw(ctx, u, tNew) {
-    const t = toOld(tNew);            // the acting is authored in the script's own time
+  draw(ctx, u, t) {
     const mw = O.moodWeights(S.MOOD, t);
-    const pedX = W / 2;
-    O.background(ctx, mw, t, pedX);
+    O.background(ctx, mw, t, W / 2);
     SET.update(t);
     G.renderSet(ctx, { scene: SET.scene, camera: SET.camera, update() {} }, t, u, {});
     O.vignette(ctx, mw);
-    overlays(ctx, t);
+    overlays(ctx, t, IMGS);
   },
 });

@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { LINES } from '../script.js';
+import { LINES } from '../lines.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const VO = path.join(HERE, 'vo');

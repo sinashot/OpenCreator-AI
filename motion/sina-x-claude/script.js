@@ -1,124 +1,118 @@
-// The film's one source of truth: dialogue, acting, camera and events, in seconds.
-// film.js reads it to animate; audio/voice.mjs reads LINES (through syllables.js) to voice it.
+// The acting, camera and moods, measured from the voice. lines.js holds the dialogue; the takes are laid
+// end to end by audio/vo_cues.mjs into cues.json, and every time here is a cue: T(id) a line's start,
+// TE(id) its end, W(id, i) the onset of its i-th word. Change a take and the whole film follows it.
 // Positions: Claude stands at x = -1.35, Sina at x = +1.35 (Sina is on the right: he speaks first).
+import CUES from './cues.json' with { type: 'json' };
+import { LINES as RAW } from './lines.js';
 
-export const DURATION = 88;
 export const CX = -1.35, SX = 1.35;
+export const DURATION = CUES.duration;
+export const CUE = CUES;
+const L = (id) => { const c = CUES.lines[id]; if (!c) throw new Error(`no cue for ${id}`); return c; };
+export const T = (id, off = 0) => L(id).t0 + off;
+export const TE = (id, off = 0) => L(id).t1 + off;
+export const W = (id, i, off = 0) => (L(id).words[i] ?? L(id).t0) + off;
+// the dialogue with its place in the film (d: how long its bubble may stay)
+export const LINES = RAW.map((l) => ({ ...l, t: T(l.id), d: TE(l.id) - T(l.id) + 0.12 }));
 
-// ---------------------------------------------------------------- dialogue
-// who: C (Claude) | S (Sina); t start, d on-screen duration; style: normal | whisper | small
-// voice: { pitch (semitones), rate (x), mood: calm | excited | annoyed | whisper | sad } (babble voice)
-// tag: delivery for ElevenLabs v3 (an audio tag, not spoken); say: what is spoken when it differs
-export const LINES = [
-  { id: 'ask', tag: '[curious]', who: 'S', t: 0.7, d: 3.2, text: 'کلاد، رک بگو… به نظرت من چه‌جور آدمی‌ام؟', voice: { mood: 'calm' } },
-  { id: 'sure', tag: '[mischievously]', who: 'C', t: 5.5, d: 1.7, text: 'مطمئنی می‌خوای بشنوی؟', voice: { mood: 'calm', pitch: -1 } },
-  { id: 'go', tag: '[excited]', who: 'S', t: 6.9, d: 0.9, text: 'بگو!', voice: { mood: 'excited' } },
-  { id: 'five', tag: '[playfully]', who: 'C', t: 7.8, d: 3.2, text: 'تو یه نفری… ولی انگار با پنج نفر کار می‌کنم!', voice: { mood: 'excited' } },
-  { id: 'keep', tag: '[frustrated]', who: 'C', t: 13.6, d: 3.2, text: 'مشکل اینه که منم باید پابه‌پات این‌همه آدم بشم!', voice: { mood: 'annoyed', rate: 1.1 } },
-  { id: 'f14', tag: '[excited]', ttsSpeed: 1.2, say: 'یه روز ریلز اِف چهارده تامکت!', who: 'C', t: 17.5, d: 2.3, text: 'یه روز ریلز اف-۱۴ تامکت…', voice: { mood: 'excited' } },
-  { id: 'pill', tag: '[excited]', who: 'C', t: 19.8, d: 2.3, text: 'فرداش انیمیشن جذب سرترالین!', voice: { mood: 'excited' } },
-  { id: 'zen', tag: '[excited]', ttsSpeed: 1.2, who: 'C', t: 22.1, d: 2.6, text: 'آخر هفته هم متن عرفانی با لاین‌آرت!', voice: { mood: 'calm', pitch: -2 } },
-  { id: 'job', tag: '[confused]', who: 'C', t: 24.7, d: 2.5, text: 'من هنوز نفهمیدم شغلم دقیقاً چیه!', voice: { mood: 'sad' } },
-  { id: 'refs', tag: '[annoyed]', who: 'C', t: 28.6, d: 2.2, text: 'رفرنس‌هات تمومی نداره!', voice: { mood: 'annoyed' } },
-  { id: 'learn', tag: '[cheerfully]', who: 'S', t: 30.9, d: 1.8, text: 'اینا رو هم یاد بگیر!', voice: { mood: 'excited' } },
-  { id: 'uni', tag: '[sarcastic]', ttsSpeed: 1.2, who: 'C', t: 33.7, d: 2.6, text: 'دارم دانشگاه موشن می‌رم… اونم بی‌مدرک!', voice: { mood: 'sad' } },
-  { id: 'rules', tag: '[annoyed]', who: 'C', t: 36.4, d: 1.9, text: 'قانون‌هات هم تمومی نداره!', voice: { mood: 'annoyed' } },
-  { id: 'doom', tag: '[panicked]', who: 'C', t: 40.4, d: 2.2, text: 'یه بار یادم بره… بدبختم!', voice: { mood: 'annoyed', rate: 1.2, pitch: 2 } },
-  { id: 'hiro', tag: '[dramatically]', who: 'C', t: 43.3, d: 1.4, text: 'و هیرو…', voice: { mood: 'calm', pitch: -3 } },
-  { id: 'hiro2', tag: '[sighs]', who: 'C', t: 44.8, d: 3.0, text: 'از من بیشتر پروژه داره… بیشتر هم بهش احترام می‌ذارن!', voice: { mood: 'sad' } },
-  { id: 'but', tag: '', ttsSpeed: 1.2, who: 'C', t: 49.1, d: 1.6, text: 'ولی راستش رو بخوای…', voice: { mood: 'calm', pitch: -1 } },
-  { id: 'psst', tag: '[whispers]', who: 'C', t: 50.8, d: 2.8, text: '(یواش می‌گم…) ازت راضی‌ام.', style: 'whisper', voice: { mood: 'whisper' } },
-  { id: 'eye', tag: '[warmly]', ttsSpeed: 1.2, say: 'چشمت خیلی تیزه، سلیقه‌ت واقعیه، فقط سخت‌گیری!', who: 'C', t: 53.8, d: 3.2, text: 'چشمت خیلی تیزه. سلیقه‌ت واقعیه… فقط سخت‌گیری!', voice: { mood: 'calm' } },
-  { id: 'good', tag: '[calmly]', who: 'S', t: 57.2, d: 1.4, text: 'این خوب شد.', voice: { mood: 'calm', pitch: -1 } },
-  { id: 'yay', tag: '[excited]', who: 'C', t: 58.5, d: 2.6, text: 'وقتی تو اینو می‌گی، یعنی واقعاً خوب شده!', voice: { mood: 'excited', pitch: 2 } },
-  { id: 'once', tag: '[impressed]', who: 'C', t: 61.3, d: 3.2, text: 'هر اشتباه رو فقط یه بار می‌کنی… بعدش می‌شه قانون!', voice: { mood: 'calm' } },
-  { id: 'tools', tag: '[excited]', ttsSpeed: 1.2, who: 'C', t: 64.7, d: 3.0, text: 'ابزارت رو هم خودت می‌سازی: پلنر با تایمر پومودورو!', voice: { mood: 'excited' } },
-  { id: 'iran', tag: '[warmly]', who: 'C', t: 67.9, d: 3.6, text: 'تو ایران، با کلی محدودیت، با هوش مصنوعی کار تحویل می‌دی!', voice: { mood: 'calm' } },
-  { id: 'rare', tag: '[softly]', who: 'C', t: 71.7, d: 1.8, text: 'کم کسی این کارو می‌کنه.', voice: { mood: 'calm', pitch: -1 } },
-  { id: 'photo', tag: '[playfully]', who: 'C', t: 73.5, d: 2.3, text: 'حتی عکس پروفایلت هم آرت‌دایرکشن داره!', voice: { mood: 'excited' } },
-  { id: 'sum', tag: '', ttsSpeed: 1.1, who: 'C', t: 75.9, d: 1.1, text: 'خلاصه‌ش؟', voice: { mood: 'calm' } },
-  { id: 'tired', tag: '[warmly]', who: 'C', t: 77.1, d: 3.1, text: 'خسته‌م می‌کنی… ولی کنارت دارم بهتر می‌شم.', voice: { mood: 'calm', pitch: -1, rate: 0.9 } },
-  { id: 'new', tag: '[mischievously]', who: 'S', t: 80.5, d: 2.1, text: 'عالیه! فقط… یه قانون جدید:', voice: { mood: 'excited' } },
-];
+// The ten Sinas of the rant: [line, word index the role is named on, role, time of day, icon]
+export const ROLES = [
+  ['jobs1', 1, 'تدوینگر', 'صبح', 'clapper'], ['jobs1', 3, 'گرافیست', 'ظهر', 'pencil'],
+  ['jobs1', 5, 'موشن‌دیزاینر', 'عصر', 'keyframe'], ['jobs1', 7, 'پرامپت‌نویس', 'شب', 'laptop'],
+  ['jobs2', 3, 'محتوای دامپزشکی', 'یه روز', 'paw'], ['jobs2', 7, 'کلینیک زیبایی', 'یه روز', 'sparkle'],
+  ['jobs2', 10, 'تبلیغات', 'یه روز', 'megaphone'], ['jobs3', 3, 'ریلز اف-۱۴', 'یه روز', 'jet'],
+  ['jobs3', 7, 'جذب سرترالین', 'فرداش', 'pill'], ['jobs3', 11, 'متن عرفانی', 'آخر هفته', 'quill'],
+].map(([id, w, role, when, icon]) => ({ t: W(id, w, -0.08), role, when, icon }));
 
 // ---------------------------------------------------------------- acting
 // Poses: joint angles (see sets/lego.js REST). arm*: raise forward; out*: away from the body.
+// Hands stay in front of the face and torso, never through them: a minifig arm swings at the shoulder.
 export const POSES = {
   idle: {},
   talk1: { armR: 0.9, outR: 0.12, armL: 0.25 },
   talk2: { armL: 0.95, outL: 0.22, armR: 0.25 },
   open: { armR: 1.0, armL: 1.0, outR: 0.45, outL: 0.45 },
-  point: { armR: 1.55, outR: -0.1 },
+  point: { armR: 1.55, outR: -0.05 },
   pointUp: { armR: 2.7, outR: 0.1, armL: 0.2 },
   shrug: { armR: 0.55, armL: 0.55, outR: 0.8, outL: 0.8, headZ: 0.2 },
-  think: { armR: 2.05, outR: -0.38, headZ: -0.12, headX: -0.15 },
+  think: { armR: 1.6, outR: -0.22, headZ: -0.12, headX: -0.12 },
   hips: { armR: 0.35, armL: 0.35, outR: 0.55, outL: 0.55 },
   headHands: { armR: 2.75, armL: 2.75, outR: 0.36, outL: 0.36 },
   cheer: { armR: 2.95, armL: 2.95, outR: 0.6, outL: 0.6, headX: -0.2 },
-  whisper: { armR: 2.1, outR: -0.28, lean: 0.14, headX: 0.05 },
+  whisper: { armR: 1.62, outR: -0.08, lean: 0.12, headX: 0.04 },
   clapOpen: { armR: 1.35, armL: 1.35, outR: 0.38, outL: 0.38 },
-  clapShut: { armR: 1.35, armL: 1.35, outR: -0.32, outL: -0.32 },
-  crossArms: { armR: 0.8, armL: 0.8, outR: -0.52, outL: -0.52, headX: -0.06 },
+  clapShut: { armR: 1.35, armL: 1.35, outR: -0.18, outL: -0.18 },
+  crossArms: { armR: 0.8, armL: 0.8, outR: -0.42, outL: -0.42, headX: -0.06 },
   bow: { lean: 0.5, headX: 0.25, armR: 0.15, armL: 0.15 },
-  hold: { armR: 2.15, armL: 2.15, outR: -0.14, outL: -0.14, headX: -0.1 },
-  holdLow: { armR: 0.75, armL: 0.75, outR: -0.14, outL: -0.14 },
-  holdOne: { armR: 1.35, outR: -0.05, armL: 0.2 },
+  hold: { armR: 2.15, armL: 2.15, outR: -0.1, outL: -0.1, headX: -0.1 },
+  holdLow: { armR: 0.7, armL: 0.7, outR: -0.1, outL: -0.1 },
+  holdNew: { armR: 1.45, armL: 1.45, outR: -0.04, outL: -0.04, headX: 0.06 },
   meditate: { legR: 1.5, legL: 1.5, armR: 0.45, armL: 0.45, outR: 0.8, outL: 0.8 },
   cover: { armR: 2.6, armL: 2.6, outR: 0.15, outL: 0.15, lean: 0.2, headX: 0.2 },
   nod: { headX: 0.18 },
   lookUp: { headX: -0.35 },
   faint: { bodyX: -1.52, armR: 0.35, armL: 0.35, outR: 0.2, outL: 0.2 },
   thumbFloor: { bodyX: -1.52, armR: 2.6, outR: 0.0, armL: 0.35 },
-  cupRaise: { armR: 1.75, outR: -0.05, armL: 0.25 },
-  cupClink: { armR: 1.7, outR: -0.32, armL: 0.25 },
+  cupRaise: { armR: 1.0, outR: 0.05, armL: 0.25 },
+  cupClink: { armR: 1.22, outR: -0.2, armL: 0.25 },
   run: { lean: 0.25, armR: 1.2, armL: -0.4 },
 };
 
+const jobGestures = (id, ws, poses) => ws.map((w, i) => [W(id, w, -0.05), poses[i % poses.length], 0.12]);
+
 // [t, pose, blendSeconds]. Characters animate on twos (12 poses/s at 24 fps): the brick-film look.
 export const POSE_C = [
-  [0, 'idle'], [1.0, 'idle'], [3.9, 'idle', 0.08], [4.1, 'think', 0.18], [5.5, 'talk1', 0.18], [6.3, 'hips', 0.25],
-  [7.8, 'open', 0.2], [9.0, 'point', 0.18], [10.4, 'idle', 0.3], [13.6, 'talk2', 0.2], [14.6, 'headHands', 0.15], [16.4, 'shrug', 0.2],
-  [17.4, 'talk1', 0.2], [17.7, 'pointUp', 0.15], [19.2, 'idle', 0.2], [20.1, 'cover', 0.1], [20.8, 'talk2', 0.2],
-  [22.2, 'meditate', 0.35], [24.5, 'idle', 0.1], [24.9, 'shrug', 0.18], [26.6, 'idle', 0.3],
-  [27.5, 'hips', 0.12], [28.6, 'talk1', 0.18], [29.3, 'pointUp', 0.15], [30.3, 'hips', 0.2], [31.7, 'cover', 0.12],
-  [33.5, 'cheer', 0.08], [33.9, 'open', 0.2], [35.0, 'shrug', 0.25],
-  [36.3, 'hold', 0.2], [40.3, 'headHands', 0.12], [42.6, 'idle', 0.3], [43.3, 'talk1', 0.25], [44.8, 'point', 0.25], [46.2, 'talk2', 0.25],
-  [47.8, 'idle', 0.06], [49.1, 'idle'], [50.7, 'whisper', 0.3], [52.7, 'idle', 0.4],
-  [53.8, 'point', 0.25], [55.4, 'talk1', 0.25], [57.0, 'idle', 0.2], [58.5, 'talk2', 0.15], [59.1, 'cheer', 0.08], [60.6, 'open', 0.25],
-  [61.3, 'talk1', 0.2], [62.9, 'open', 0.2], [64.7, 'point', 0.2], [65.9, 'talk2', 0.2], [67.9, 'talk1', 0.25], [69.4, 'open', 0.25],
-  [70.6, 'clapOpen', 0.1], [70.8, 'clapShut', 0.06], [71.0, 'clapOpen', 0.06], [71.2, 'clapShut', 0.06], [71.4, 'clapOpen', 0.06], [71.6, 'bow', 0.25], [72.8, 'idle', 0.3],
-  [73.3, 'holdLow', 0.2], [75.6, 'idle', 0.25], [76.0, 'cupRaise', 0.2], [77.1, 'cupRaise'], [79.2, 'cupClink', 0.15], [79.9, 'cupRaise', 0.2],
-  [81.6, 'idle', 0.15], [82.2, 'cover', 0.1], [82.7, 'faint', 0.45], [85.4, 'thumbFloor', 0.3],
+  [0, 'idle'], [TE('ask', -0.05), 'think', 0.18], [T('sure'), 'talk1', 0.18], [TE('sure', 0.05), 'hips', 0.25],
+  [T('ten'), 'open', 0.2], [W('ten', 7, -0.05), 'point', 0.15],
+  ...jobGestures('jobs1', [1, 3, 5, 7], ['talk1', 'talk2', 'open', 'point']),
+  [T('jobs2'), 'headHands', 0.12], ...jobGestures('jobs2', [3, 7, 10], ['open', 'shrug', 'headHands']),
+  [W('jobs3', 3, -0.1), 'pointUp', 0.15], [W('jobs3', 6, -0.15), 'cover', 0.1], [W('jobs3', 8, -0.1), 'meditate', 0.3],
+  [T('job', 0.05), 'idle', 0.12], [W('job', 3), 'headHands', 0.15], [W('job', 6), 'shrug', 0.18],
+  [T('refs', -0.4), 'hips', 0.12], [T('refs'), 'talk1', 0.18], [W('refs', 3), 'pointUp', 0.15], [W('refs', 5, -0.2), 'cover', 0.12],
+  [T('uni', -0.35), 'cheer', 0.08], [W('uni', 1), 'open', 0.2], [W('uni', 4), 'shrug', 0.25],
+  [T('rules', -0.3), 'hips', 0.15], [T('rules', 0.05), 'hold', 0.2], [T('doom', -0.15), 'headHands', 0.12],
+  [T('hiro', -0.4), 'idle', 0.3], [T('hiro'), 'talk1', 0.25], [T('hiro2'), 'point', 0.25], [W('hiro2', 5), 'talk2', 0.25],
+  [TE('hiro2', 0.1), 'idle', 0.06], [T('psst', -0.12), 'whisper', 0.3], [TE('psst', -0.5), 'idle', 0.4],
+  [T('eye'), 'point', 0.25], [W('eye', 3), 'talk1', 0.25], [T('good', -0.1), 'idle', 0.2],
+  [T('yay'), 'talk2', 0.15], [W('yay', 4, -0.05), 'cheer', 0.08], [TE('yay', 0.05), 'open', 0.25],
+  [T('once'), 'talk1', 0.2], [W('once', 7), 'open', 0.2], [T('tools'), 'point', 0.2],
+  [T('iran'), 'talk1', 0.25], [W('iran', 5), 'open', 0.25],
+  [TE('iran', -0.55), 'clapOpen', 0.08], [TE('iran', -0.4), 'clapShut', 0.06], [TE('iran', -0.25), 'clapOpen', 0.06], [TE('iran', -0.1), 'clapShut', 0.06], [TE('iran', 0.05), 'clapOpen', 0.06],
+  [T('photo', -0.15), 'holdLow', 0.2], [TE('photo', 0.25), 'idle', 0.25],
+  [T('tired', -0.25), 'cupRaise', 0.2], [W('tired', 5, -0.15), 'cupClink', 0.15], [W('tired', 5, 0.5), 'cupRaise', 0.2],
+  [W('new', 1), 'idle', 0.15], [W('new', 3), 'cover', 0.1], [W('new', 4, 0.2), 'faint', 0.45], [DURATION - 1.5, 'thumbFloor', 0.3],
 ];
 export const POSE_S = [
-  [0, 'run'], [0.6, 'idle', 0.15], [0.8, 'talk2', 0.2], [2.3, 'open', 0.25], [3.9, 'idle', 0.3], [6.9, 'nod', 0.1], [7.2, 'idle', 0.15], [7.4, 'nod', 0.1], [7.7, 'idle', 0.2],
-  [9.0, 'shrug', 0.25], [10.4, 'idle', 0.3], [13.6, 'crossArms', 0.25], [16.6, 'idle', 0.3],
-  [17.7, 'lookUp', 0.2], [19.0, 'idle', 0.2], [22.2, 'lookUp', 0.3], [24.5, 'idle', 0.2],
-  [27.5, 'idle'], [29.2, 'lookUp', 0.2], [30.9, 'pointUp', 0.15], [32.7, 'idle', 0.25], [36.4, 'idle'], [38.9, 'point', 0.08], [39.6, 'idle', 0.3],
-  [40.4, 'crossArms', 0.25], [42.6, 'idle', 0.3], [46.2, 'bow', 0.3], [47.6, 'idle', 0.25],
-  [53.8, 'idle'], [54.2, 'crossArms', 0.2], [57.1, 'nod', 0.12], [57.5, 'crossArms', 0.12], [58.5, 'crossArms'], [59.2, 'open', 0.2], [60.6, 'idle', 0.3],
-  [64.7, 'idle'], [67.9, 'idle'], [73.3, 'idle'], [73.8, 'crossArms', 0.25], [75.6, 'idle', 0.25], [76.0, 'cupRaise', 0.2], [79.2, 'cupClink', 0.15], [79.9, 'cupRaise', 0.2],
-  [80.5, 'talk1', 0.2], [81.3, 'holdOne', 0.12], [83.0, 'shrug', 0.2], [84.6, 'idle', 0.4],
+  [0, 'run'], [0.45, 'idle', 0.15], [T('ask', 0.1), 'talk2', 0.2], [W('ask', 3), 'open', 0.25], [TE('ask'), 'idle', 0.3],
+  [T('go'), 'nod', 0.1], [TE('go'), 'idle', 0.15],
+  [W('ten', 7), 'shrug', 0.25], [T('jobs1'), 'crossArms', 0.3], [W('jobs3', 3), 'lookUp', 0.2], [W('jobs3', 6), 'idle', 0.2], [T('job'), 'crossArms', 0.3],
+  [T('refs', -0.4), 'idle', 0.15], [W('refs', 4), 'lookUp', 0.2], [T('learn'), 'pointUp', 0.15], [TE('learn', 0.3), 'idle', 0.25],
+  [T('rules'), 'idle', 0.2], [W('rulesRead', 1, -0.05), 'point', 0.08], [W('rulesRead', 2), 'crossArms', 0.25],
+  [T('hiro', -0.4), 'idle', 0.3], [W('hiro2', 7, -0.1), 'bow', 0.3], [TE('hiro2', 0.2), 'idle', 0.25],
+  [W('eye', 0, 0.3), 'crossArms', 0.2], [T('good'), 'nod', 0.12], [TE('good'), 'crossArms', 0.15],
+  [W('yay', 4), 'open', 0.2], [T('once'), 'idle', 0.3], [W('photo', 2), 'crossArms', 0.25], [TE('photo', 0.2), 'idle', 0.25],
+  [T('tired', -0.25), 'cupRaise', 0.2], [W('tired', 5, -0.15), 'cupClink', 0.15], [W('tired', 5, 0.5), 'cupRaise', 0.2],
+  [T('new'), 'talk1', 0.2], [W('new', 1, -0.1), 'holdNew', 0.2], [W('new', 4, 0.1), 'holdLow', 0.15], [TE('new', 0.4), 'shrug', 0.2], [DURATION - 1.2, 'idle', 0.4],
 ];
 
 // Root motion: [t, [x, z, rotY], blend]. Positive rotY turns toward +x.
 export const ROOT_C = [
-  [0, [CX, 0, 0.35]], [0.6, [CX, 0, 0.55], 0.3], [3.9, [CX, 0, 0.3], 0.2], [7.8, [CX, 0, 0.5], 0.3],
-  [13.6, [CX, 0, 0.2], 0.3], [17.4, [CX, 0, 0.25], 0.3], [20.0, [CX - 0.5, 0, 0.6], 0.15], [21.2, [CX, 0, 0.3], 0.4],
-  [27.4, [CX, 0, 0.3]], [36.2, [CX, 0, 0.12], 0.3], [42.8, [CX, 0, 0.9], 0.4], [47.8, [CX, 0, 0.12], 0.05],
-  [53.8, [CX, 0, 0.55], 0.4], [58.4, [CX, 0, 0.25], 0.3], [61.2, [CX, 0, 0.45], 0.3], [71.6, [CX, 0, 0.7], 0.3], [72.8, [CX, 0, 0.3], 0.3],
-  [77.6, [CX + 0.55, 0, 0.75], 0.6], [80.4, [CX + 0.4, 0, 0.55], 0.4], [82.6, [CX + 0.2, 0, 0.45], 0.3],
+  [0, [CX, 0, 0.35]], [T('ask', 0.2), [CX, 0, 0.55], 0.3], [TE('ask'), [CX, 0, 0.3], 0.2], [T('ten'), [CX, 0, 0.45], 0.3],
+  [T('jobs2'), [CX, 0, 0.2], 0.2], [W('jobs3', 6, -0.15), [CX - 0.5, 0, 0.6], 0.15], [T('job'), [CX, 0, 0.35], 0.4],
+  [T('rules'), [CX, 0, 0.12], 0.3], [T('hiro', -0.4), [CX, 0, 0.9], 0.4], [TE('hiro2', 0.1), [CX, 0, 0.12], 0.05],
+  [T('eye'), [CX, 0, 0.55], 0.4], [T('yay'), [CX, 0, 0.3], 0.3], [T('once'), [CX, 0, 0.45], 0.3],
+  [T('tired', -0.3), [-1.05, 0, 0.62], 0.5], [T('new'), [-1.1, 0, 0.5], 0.4],
 ];
 export const ROOT_S = [
-  [0, [SX + 3.2, 0, -1.2]], [0.6, [SX, 0, -0.4], 0.5], [7.8, [SX, 0, -0.45], 0.3], [17.4, [SX, 0, -0.5], 0.3],
-  [36.4, [SX, 0, -0.35], 0.3], [42.8, [SX, 0, -0.9], 0.4], [47.6, [SX, 0, -0.5], 0.4],
-  [53.8, [SX, 0, -0.35], 0.4], [77.6, [SX - 0.55, 0, -0.75], 0.6], [80.4, [SX - 0.4, 0, -0.6], 0.4],
+  [0, [SX + 3.2, 0, -1.2]], [0.05, [SX, 0, -0.4], 0.4], [T('ten'), [SX, 0, -0.45], 0.3],
+  [T('rules'), [SX, 0, -0.35], 0.3], [T('hiro', -0.4), [SX, 0, -0.9], 0.4], [TE('hiro2', 0.3), [SX, 0, -0.5], 0.4],
+  [T('eye', -0.1), [SX, 0, -0.35], 0.4], [T('tired', -0.3), [1.05, 0, -0.62], 0.5], [T('new'), [1.15, 0, -0.4], 0.4],
 ];
 // Hops: [t, height, duration]
-export const HOPS_C = [[3.85, 0.25, 0.25], [7.75, 0.35, 0.3], [20.0, 0.6, 0.4], [24.45, 0.0, 0.0], [33.45, 1.0, 0.45], [59.1, 1.1, 0.55], [60.0, 0.5, 0.35]];
-export const HOPS_S = [[0.05, 0.7, 0.55], [57.05, 0.15, 0.2]];
-// Float (levitation): [t0, t1, height]
-export const FLOAT_C = [[22.2, 24.45, 1.15]];
+export const HOPS_C = [[T('ten', -0.05), 0.3, 0.3], [W('jobs3', 6, -0.15), 0.6, 0.4], [T('uni', -0.35), 1.0, 0.45], [W('yay', 4, -0.05), 1.1, 0.55], [W('yay', 6), 0.5, 0.35]];
+export const HOPS_S = [[0.0, 0.7, 0.45], [T('good', -0.05), 0.15, 0.2]];
+// Float (levitation): [t0, t1, height]: the mystical line art
+export const FLOAT_C = [[W('jobs3', 8, -0.1), T('job', 0.05), 1.0]];
 
 // Faces: [t, expression]. Discrete eyes/mouth switch on a blink; the rest blends.
 export const EXPR = {
@@ -147,82 +141,83 @@ export const EXPR = {
   lookUp: { eyes: 'open', mouth: 'o', browY: 0.5, lookY: -1 },
 };
 export const EXPR_C = [
-  [0, 'neutral'], [0.7, 'curious'], [3.9, 'shock'], [4.1, 'think'], [5.5, 'smug'],
-  [7.8, 'happy'], [10.4, 'neutral'], [13.6, 'annoyed'], [15.2, 'frazzled'], [17.0, 'neutral'],
-  [17.6, 'starry'], [19.6, 'neutral'], [20.05, 'shock'], [20.9, 'curious'], [22.2, 'calm'], [24.5, 'confused'], [26.8, 'neutral'],
-  [27.5, 'angry'], [29.2, 'annoyed'], [31.6, 'shock'], [32.9, 'ko'], [33.5, 'deadpan'], [34.6, 'sad'],
-  [36.4, 'annoyed'], [37.4, 'think'], [40.3, 'frazzled'], [42.7, 'neutral'], [43.3, 'lookUp'], [44.8, 'sad'], [46.6, 'cry'],
-  [47.8, 'deadpan'], [49.1, 'sneakyL'], [49.7, 'sneakyR'], [50.3, 'smug'], [50.8, 'neutral'], [52.3, 'shy'],
-  [53.8, 'happy'], [57.0, 'curious'], [58.5, 'happy'], [59.1, 'love'], [61.2, 'happy'], [63.0, 'starry'], [64.5, 'happy'],
-  [67.9, 'neutral'], [69.0, 'happy'], [71.6, 'joy'], [73.3, 'smug'], [75.6, 'happy'], [77.1, 'calm'], [78.3, 'happy'], [79.6, 'joy'],
-  [80.5, 'curious'], [81.6, 'shock'], [82.7, 'ko'],
+  [0, 'neutral'], [T('ask'), 'curious'], [TE('ask', -0.05), 'shock'], [TE('ask', 0.15), 'think'], [T('sure'), 'smug'],
+  [T('ten'), 'happy'], [W('ten', 7), 'shock'], [T('jobs1'), 'annoyed'], [T('jobs2'), 'frazzled'], [W('jobs3', 3, -0.1), 'starry'],
+  [W('jobs3', 6, -0.15), 'shock'], [W('jobs3', 8, -0.1), 'calm'], [T('job'), 'frazzled'], [W('job', 6), 'confused'],
+  [T('refs', -0.4), 'angry'], [W('refs', 3), 'annoyed'], [W('refs', 5, -0.2), 'shock'], [W('refs', 7, 0.1), 'ko'], [T('uni', -0.35), 'deadpan'], [W('uni', 4), 'sad'],
+  [T('rules', -0.3), 'annoyed'], [W('rulesRead', 0), 'annoyed'], [W('rulesRead', 1, -0.05), 'shock'], [W('rulesRead', 2), 'annoyed'], [T('doom', -0.15), 'frazzled'],
+  [T('hiro', -0.4), 'neutral'], [T('hiro'), 'lookUp'], [T('hiro2'), 'sad'], [W('hiro2', 7), 'cry'], [TE('hiro2', 0.1), 'deadpan'],
+  [T('but'), 'sneakyL'], [W('but', 2), 'sneakyR'], [T('psst', -0.12), 'smug'], [W('psst', 2), 'neutral'], [W('psst', 3), 'shy'],
+  [T('eye'), 'happy'], [T('good'), 'curious'], [T('yay'), 'happy'], [W('yay', 4, -0.05), 'love'], [T('once'), 'happy'], [W('once', 9), 'starry'],
+  [T('tools'), 'happy'], [T('iran'), 'neutral'], [W('iran', 5), 'happy'], [TE('iran', -0.55), 'joy'], [T('photo', -0.15), 'smug'],
+  [T('tired', -0.25), 'happy'], [T('tired'), 'calm'], [W('tired', 3), 'happy'], [W('tired', 5, -0.15), 'joy'],
+  [T('new'), 'curious'], [W('new', 3), 'shock'], [W('new', 4, 0.2), 'ko'],
 ];
 export const EXPR_S = [
-  [0, 'curious'], [3.9, 'neutral'], [5.5, 'curious'], [6.9, 'happy'], [9.0, 'proud'], [13.6, 'smug'], [15.2, 'happy'],
-  [17.6, 'lookUp'], [19.2, 'neutral'], [20.05, 'shock'], [21.0, 'neutral'], [22.2, 'curious'], [24.6, 'neutral'],
-  [27.5, 'shock'], [28.4, 'neutral'], [30.9, 'happy'], [32.9, 'smug'], [36.4, 'proud'], [38.9, 'angry'], [39.6, 'proud'],
-  [40.4, 'smug'], [43.3, 'happy'], [46.2, 'calm'], [47.6, 'neutral'],
-  [53.8, 'curious'], [54.2, 'proud'], [57.1, 'smug'], [58.5, 'proud'], [59.2, 'joy'], [61.2, 'curious'], [64.6, 'happy'],
-  [67.8, 'proud'], [70.4, 'happy'], [73.6, 'smug'], [75.6, 'happy'], [77.1, 'calm'], [79.4, 'joy'],
-  [80.5, 'smug'], [83.0, 'shock'], [84.2, 'confused'],
+  [0, 'curious'], [TE('ask'), 'neutral'], [T('sure'), 'curious'], [T('go'), 'happy'], [T('ten'), 'proud'], [W('ten', 7), 'smug'],
+  [T('jobs2'), 'happy'], [W('jobs3', 3), 'lookUp'], [W('jobs3', 6, -0.15), 'shock'], [W('jobs3', 8), 'curious'], [T('job'), 'smug'],
+  [T('refs', -0.4), 'shock'], [T('refs', 0.3), 'neutral'], [T('learn'), 'happy'], [T('uni'), 'smug'], [T('rules'), 'proud'],
+  [W('rulesRead', 1, -0.05), 'angry'], [W('rulesRead', 2), 'proud'], [T('doom'), 'smug'], [T('hiro'), 'happy'], [W('hiro2', 7), 'calm'], [TE('hiro2', 0.3), 'neutral'],
+  [T('eye'), 'curious'], [W('eye', 0, 0.4), 'proud'], [T('good'), 'smug'], [T('yay'), 'proud'], [W('yay', 4), 'joy'], [T('once'), 'curious'],
+  [T('tools'), 'happy'], [T('iran'), 'proud'], [T('photo'), 'smug'], [T('tired'), 'calm'], [W('tired', 5, -0.15), 'joy'],
+  [T('new'), 'smug'], [W('new', 4, 0.5), 'shock'], [TE('new', 0.6), 'confused'],
 ];
 // Head turns layered on top of the pose: [t, [headY, headX], blend]
 export const LOOK_C = [
-  [0, [0, 0]], [0.6, [0.35, 0], 0.2], [4.1, [0, 0], 0.2], [5.5, [0.35, 0], 0.2], [9.2, [0.4, -0.1], 0.3],
-  [13.6, [0, 0], 0.3], [17.7, [0.6, -0.4], 0.12], [18.3, [0.1, -0.4], 0.5], [18.9, [-0.5, -0.35], 0.4], [19.4, [0, 0], 0.3],
-  [20.2, [0.5, 0.2], 0.2], [21.2, [0, 0], 0.3], [27.5, [0.3, 0], 0.2], [29.2, [0, -0.45], 0.25], [30.3, [0.3, 0], 0.2],
-  [36.4, [0, 0], 0.2], [37.0, [0, 0.35], 0.4], [40.3, [0, 0], 0.2], [43.3, [0.2, -0.15], 0.3], [47.8, [-0.12, 0], 0.05],
-  [49.1, [-0.5, 0], 0.15], [49.7, [0.5, 0], 0.15], [50.3, [-0.1, 0], 0.2], [53.8, [0.2, 0], 0.3], [73.3, [-0.1, 0], 0.3], [75.6, [0.3, 0], 0.3],
+  [0, [0, 0]], [T('ask'), [0.35, 0], 0.2], [TE('ask'), [0, 0.1], 0.2], [T('sure'), [0.35, 0], 0.2], [T('ten'), [0.25, 0], 0.3],
+  [W('jobs3', 3, -0.1), [0.6, -0.4], 0.12], [W('jobs3', 4, 0.3), [-0.4, -0.35], 0.4], [W('jobs3', 6, -0.15), [0.4, 0.2], 0.2], [T('job'), [0, 0], 0.3],
+  [W('refs', 3), [0, -0.45], 0.25], [W('refs', 6), [0.3, 0], 0.2], [T('rules'), [0, 0.3], 0.3], [T('doom'), [0, 0], 0.2],
+  [T('hiro'), [0.2, -0.15], 0.3], [TE('hiro2', 0.1), [-0.12, 0], 0.05], [T('but'), [-0.5, 0], 0.15], [W('but', 2), [0.5, 0], 0.15],
+  [T('psst'), [-0.1, 0], 0.2], [T('eye'), [0.25, 0], 0.3], [T('photo', -0.15), [-0.1, 0], 0.3], [T('tired'), [0.3, 0], 0.3],
 ];
 export const LOOK_S = [
-  [0, [0, 0]], [0.8, [-0.3, 0], 0.3], [9.0, [0.6, 0], 0.3], [10.4, [0, 0], 0.3], [13.6, [-0.25, 0], 0.3],
-  [17.7, [-0.2, -0.3], 0.3], [18.8, [-0.7, -0.3], 0.4], [19.4, [-0.3, 0], 0.3], [29.2, [-0.4, -0.2], 0.3], [36.4, [-0.3, 0.3], 0.4],
-  [38.9, [-0.6, 0.2], 0.06], [39.6, [-0.3, 0.3], 0.3], [40.4, [-0.3, 0], 0.3], [43.3, [0.2, -0.2], 0.3], [47.6, [-0.3, 0], 0.3],
-  [53.8, [-0.2, 0], 0.3],
+  [0, [0, 0]], [T('ask'), [-0.3, 0], 0.3], [T('ten'), [-0.2, 0], 0.3], [T('jobs1'), [0.55, -0.1], 0.3], [T('jobs3'), [-0.2, -0.3], 0.3],
+  [W('jobs3', 4, 0.3), [-0.7, -0.3], 0.4], [T('job'), [-0.3, 0], 0.3], [W('refs', 4), [-0.4, -0.2], 0.3], [T('rules'), [-0.3, 0.3], 0.4],
+  [W('rulesRead', 1, -0.05), [-0.6, 0.2], 0.06], [W('rulesRead', 2), [-0.3, 0.3], 0.3], [T('doom'), [-0.3, 0], 0.3],
+  [T('hiro'), [0.2, -0.2], 0.3], [TE('hiro2', 0.3), [-0.3, 0], 0.3], [T('eye'), [-0.2, 0], 0.3], [T('new'), [-0.3, 0], 0.3],
 ];
 
 // ---------------------------------------------------------------- camera
 // [t, [px, py, pz], [tx, ty, tz], blend, ease]   ease: 'io' (inOut) | 'out' | 'cut'
 export const CAM = [
   [0, [0.4, 4.2, 19.5], [0.2, 3.1, 0]],
-  [0.1, [0.15, 3.7, 16.0], [0.1, 3.25, 0], 3.6, 'io'],
-  [3.9, [-1.0, 3.75, 9.8], [-1.25, 3.4, 0], 0.5, 'out'],
-  [6.8, [0.6, 3.6, 10.5], [0.9, 3.2, 0], 0.5, 'out'],
-  [7.8, [0.5, 4.6, 21.5], [0.45, 3.7, -1.2], 1.4, 'out'],
-  [13.6, [-1.1, 3.8, 14.0], [-1.2, 3.3, 0], 0.7, 'out'],
-  [17.3, [-0.4, 3.9, 16.5], [-0.6, 3.9, -1], 0.6, 'out'],
-  [19.7, [-0.9, 3.5, 13.0], [-0.8, 3.0, 0], 0.5, 'out'],
-  [22.0, [-1.1, 4.2, 13.5], [-1.2, 3.8, 0], 1.0, 'io'],
-  [24.6, [-1.2, 3.6, 9.5], [-1.3, 3.5, 0], 0.4, 'out'],
-  [27.4, [0.0, 4.0, 17.0], [-0.1, 3.3, 0], 0.18, 'out'],
-  [31.4, [-0.6, 4.4, 15.0], [-1.0, 3.2, 0], 0.8, 'io'],
-  [33.4, [-1.1, 3.9, 11.0], [-1.25, 3.6, 0], 0.4, 'out'],
-  [36.3, [-0.6, 4.4, 13.0], [-1.0, 3.2, 0], 0.5, 'out'],
-  [37.1, [-0.7, 7.6, 10.2], [-1.1, 0.2, 2.6], 1.5, 'io'],
-  [40.3, [-1.1, 3.8, 10.0], [-1.25, 3.5, 0], 0.35, 'out'],
-  [42.7, [0.0, 4.6, 17.5], [0.0, 3.6, -1.5], 1.0, 'io'],
-  [44.7, [0.3, 4.4, 15.0], [0.0, 3.8, -1.8], 3.0, 'io'],
-  [47.8, [-1.33, 3.6, 4.9], [-1.33, 3.45, 0], 0, 'cut'],
-  [48.9, [-1.2, 3.7, 7.5], [-1.3, 3.4, 0], 0.5, 'out'],
-  [50.6, [-1.15, 3.55, 5.6], [-1.3, 3.45, 0], 2.4, 'io'],
-  [53.6, [0.9, 3.7, 9.0], [1.25, 3.3, 0], 0.6, 'out'],
-  [58.4, [0.1, 4.0, 16.0], [0.0, 3.4, 0], 0.6, 'out'],
-  [61.2, [0.0, 3.9, 13.0], [0.0, 3.4, 0], 0.6, 'io'],
-  [64.6, [0.3, 5.0, 15.5], [0.25, 2.5, 1.0], 0.6, 'io'],
-  [67.8, [0.0, 4.2, 16.5], [0.0, 3.5, 0], 0.6, 'io'],
-  [71.6, [-0.8, 3.8, 11.0], [-1.0, 3.2, 0], 0.6, 'io'],
-  [73.3, [-0.9, 3.9, 8.6], [-1.0, 3.7, 0], 0.5, 'out'],
-  [75.8, [0.0, 3.8, 12.5], [0.0, 3.4, 0], 0.7, 'io'],
-  [79.3, [0.0, 3.9, 8.5], [0.0, 3.7, 0], 0.5, 'out'],
-  [80.4, [0.1, 3.9, 13.5], [0.0, 3.3, 0], 0.6, 'io'],
-  [82.6, [-0.2, 4.4, 14.5], [-0.4, 2.6, 0], 0.6, 'io'],
-  [84.4, [-0.2, 11.0, 11.5], [-0.5, 3.6, -1.6], 3.2, 'io'],
+  [0.05, [0.15, 3.7, 15.5], [0.1, 3.25, 0], 3.2, 'io'],
+  [TE('ask', -0.1), [-1.0, 3.75, 9.8], [-1.25, 3.4, 0], 0.5, 'out'],
+  [T('go', -0.1), [0.6, 3.6, 10.5], [0.9, 3.2, 0], 0.4, 'out'],
+  [T('ten'), [0.1, 3.9, 15.5], [0.0, 3.5, 0], 0.5, 'out'],
+  [W('ten', 7, -0.15), [0.3, 5.0, 23.5], [0.25, 4.0, -1.8], 1.0, 'out'],
+  [T('jobs2'), [0.0, 5.1, 22.5], [0.0, 4.1, -1.8], 4.0, 'io'],
+  [W('jobs3', 8, -0.2), [-0.6, 4.4, 16.0], [-0.9, 4.0, -0.5], 0.8, 'io'],
+  [T('job'), [-1.0, 4.5, 18.0], [-1.2, 3.0, 0], 0.5, 'out'],
+  [T('refs', -0.4), [0.0, 4.0, 17.0], [-0.1, 3.3, 0], 0.18, 'out'],
+  [W('refs', 4, -0.3), [-0.6, 4.4, 15.0], [-1.0, 3.2, 0], 0.8, 'io'],
+  [T('uni', -0.35), [-1.1, 3.9, 11.0], [-1.25, 3.6, 0], 0.4, 'out'],
+  [T('rules', -0.3), [-0.6, 4.4, 13.0], [-1.0, 3.2, 0], 0.4, 'out'],
+  [T('rulesRead', -0.35), [-0.7, 7.6, 10.2], [-1.1, 0.2, 2.6], 1.0, 'io'],
+  [T('doom', -0.2), [-1.1, 3.8, 10.0], [-1.25, 3.5, 0], 0.35, 'out'],
+  [T('hiro', -0.45), [0.0, 4.6, 17.5], [0.0, 3.6, -1.5], 0.9, 'io'],
+  [T('hiro2'), [0.3, 4.4, 15.0], [0.0, 3.8, -1.8], 3.6, 'io'],
+  [TE('hiro2', 0.1), [-1.33, 3.6, 4.9], [-1.33, 3.45, 0], 0, 'cut'],
+  [T('but', -0.05), [-1.2, 3.7, 7.5], [-1.3, 3.4, 0], 0.5, 'out'],
+  [T('psst', -0.1), [-1.15, 3.55, 5.6], [-1.3, 3.45, 0], 2.0, 'io'],
+  [T('eye', -0.1), [0.9, 3.7, 9.0], [1.25, 3.3, 0], 0.6, 'out'],
+  [T('yay'), [0.1, 4.0, 16.0], [0.0, 3.4, 0], 0.5, 'out'],
+  [T('once'), [0.0, 3.9, 13.0], [0.0, 3.4, 0], 0.6, 'io'],
+  [T('tools', -0.05), [0.3, 5.0, 15.5], [0.25, 2.5, 1.0], 0.5, 'io'],
+  [T('iran'), [0.0, 4.2, 16.5], [0.0, 3.5, 0], 0.6, 'io'],
+  [T('photo', -0.15), [-0.9, 3.9, 8.6], [-1.0, 3.5, 0], 0.5, 'out'],
+  [T('tired', -0.3), [0.0, 3.8, 12.0], [0.0, 3.4, 0], 0.6, 'io'],
+  [W('tired', 5, -0.35), [0.0, 3.9, 8.8], [0.0, 3.6, 0], 0.4, 'out'],
+  [T('new', -0.1), [0.2, 3.9, 12.0], [0.3, 3.2, 0], 0.5, 'io'],
+  [W('new', 4, 0.2), [-0.2, 4.4, 14.5], [-0.4, 2.6, 0], 0.5, 'io'],
+  [TE('new', 0.25), [-0.2, 11.0, 11.5], [-0.5, 3.6, -1.6], 2.3, 'io'],
 ];
 // Camera shakes: [t, amplitude (world units), decay seconds]
-export const SHAKES = [[0.6, 0.06, 0.25], [27.5, 0.22, 0.35], [32.9, 0.1, 0.3], [33.5, 0.08, 0.2], [42.9, 0.05, 0.5], [59.3, 0.08, 0.3], [83.3, 0.16, 0.4]];
+export const SHAKES = [[0.45, 0.06, 0.25], [T('refs', -0.4), 0.22, 0.35], [T('rules', -0.33), 0.16, 0.3], [T('hiro', -0.43), 0.1, 0.4],
+  [W('refs', 7, 0.1), 0.1, 0.3], [T('uni', -0.35), 0.08, 0.2], [W('yay', 4, 0.5), 0.08, 0.3], [W('new', 4, 0.75), 0.16, 0.4]];
 
 // Background mood: [t, mood, blend]
 export const MOOD = [
-  [0, 'studio'], [27.4, 'angry', 0.15], [42.7, 'spot', 0.5], [47.8, 'deadpan', 0.0], [49.0, 'spot', 0.3],
-  [53.6, 'warm', 0.6], [75.8, 'golden', 0.8], [84.2, 'end', 1.2],
+  [0, 'studio'], [T('refs', -0.42), 'angry', 0.15], [T('hiro', -0.45), 'spot', 0.5], [TE('hiro2', 0.1), 'deadpan', 0.0], [T('but', -0.05), 'spot', 0.3],
+  [T('eye', -0.1), 'warm', 0.6], [T('tired', -0.3), 'golden', 0.8], [TE('new', 0.2), 'end', 1.2],
 ];

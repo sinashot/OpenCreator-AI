@@ -9,6 +9,29 @@ const SAFE = { x: 64, y: 210, w: W - 128, h: H - 210 - 360 };
 export const DIG = '۰۱۲۳۴۵۶۷۸۹';
 export const faNum = (n) => String(n).replace(/\d/g, (d) => DIG[d]);
 
+// ---------------------------------------------------------------- Sina's photos
+let IMGS = {};
+export function setImages(img) { IMGS = img; }
+// a round portrait: Sina's own face from his portrait, or Claude's spark on cream
+export function avatar(ctx, who, x, y, r, ring = null) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.closePath();
+  ctx.fillStyle = who === 'S' ? '#16161A' : '#FFF8EE'; ctx.fill();
+  ctx.save(); ctx.clip();
+  const im = IMGS.portrait;
+  if (who === 'S' && im) {
+    // the face sits around (0.52, 0.33) of the portrait
+    const s = (r * 2) / (im.width * 0.42);
+    ctx.drawImage(im, x - im.width * 0.52 * s, y - im.height * 0.335 * s, im.width * s, im.height * s);
+  } else if (who === 'C') {
+    sparkPath(ctx, x, y, r * 0.78); ctx.fillStyle = '#D97757'; ctx.fill();
+  }
+  ctx.restore();
+  ctx.lineWidth = Math.max(3, r * 0.12); ctx.strokeStyle = ring || (who === 'S' ? '#D3121E' : '#C8623F');
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
 // ---------------------------------------------------------------- backgrounds
 export const MOODS = {
   studio: { top: '#7FB2C8', bot: '#EFE0C2', rays: 0, dots: 1, vig: 0.25 },
@@ -83,7 +106,7 @@ export function vignette(ctx, w) {
 const STYLE = {
   C: { fill: '#FFF8EE', stroke: '#C8623F', ink: '#2A1F1A', tab: '#C8623F', tabInk: '#FFF8EE', name: 'کلاد' },
   S: { fill: '#FFFFFF', stroke: '#16161A', ink: '#16161A', tab: '#D3121E', tabInk: '#FFFFFF', name: 'سینا' },
-  whisper: { fill: 'rgba(24,28,52,.92)', stroke: '#9AA6D6', ink: '#E9ECFF', tab: '#5A6390', tabInk: '#E9ECFF', name: 'کلاد (آروم)' },
+  whisper: { fill: 'rgba(24,28,52,.92)', stroke: '#9AA6D6', ink: '#E9ECFF', tab: '#5A6390', tabInk: '#E9ECFF', name: 'کلاد (یواش)' },
 };
 const measureCache = new Map();
 function wordW(ctx, w, f) {
@@ -144,12 +167,14 @@ export function bubble(ctx, line, sp, t, anchor, headTop, tEnd) {
   path(); ctx.fill(); ctx.stroke();
   ctx.fillStyle = st.fill; ctx.fillRect(tx - 28, by + bh - 12, 56, 9);    // hide the seam
   ctx.setLineDash([]);
-  // name tab, top-right (reading starts there)
-  const tf = `800 30px ${FA}`;
-  const tw = wordW(ctx, st.name, tf) + 36;
-  ctx.fillStyle = st.tab; ctx.beginPath(); ctx.roundRect(bx + bw - tw - 34, by - 26, tw, 50, 25); ctx.fill();
-  ctx.fillStyle = st.tabInk; ctx.font = tf; ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(st.name, bx + bw - tw / 2 - 34, by + 1);
+  // name tab, top-right (reading starts there): avatar + name, big enough to read at a glance
+  const tf = `900 44px ${FA}`;
+  const tw = wordW(ctx, st.name, tf) + 120;
+  const tx0 = bx + bw - tw - 26, ty0 = by - 40;
+  ctx.fillStyle = st.tab; ctx.beginPath(); ctx.roundRect(tx0, ty0, tw, 72, 36); ctx.fill();
+  avatar(ctx, line.who, tx0 + tw - 38, ty0 + 36, 30, st.tabInk);
+  ctx.fillStyle = st.tabInk; ctx.font = tf; ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  ctx.fillText(st.name, tx0 + tw - 82, ty0 + 38);
   // words, right to left, each appearing as it is said
   ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.font = f; ctx.direction = 'rtl';
   L.lines.forEach((ln, li) => {
@@ -199,6 +224,17 @@ export function drawIcon(ctx, kind, x, y, r, color) {
     case 'building': ctx.fillRect(-r * 0.8, -r * 0.2, r * 1.6, r); ctx.beginPath(); ctx.moveTo(-r, -r * 0.2); ctx.lineTo(0, -r); ctx.lineTo(r, -r * 0.2); ctx.closePath(); ctx.fill(); ctx.globalCompositeOperation = 'destination-out'; for (let i = -1; i <= 1; i++) ctx.fillRect(i * r * 0.5 - r * 0.1, 0, r * 0.2, r * 0.6); break;
     case 'paw': ctx.beginPath(); ctx.ellipse(0, r * 0.3, r * 0.45, r * 0.38, 0, 0, Math.PI * 2); ctx.fill(); for (const [px, py] of [[-0.55, -0.25], [-0.2, -0.6], [0.2, -0.6], [0.55, -0.25]]) { ctx.beginPath(); ctx.ellipse(px * r, py * r, r * 0.18, r * 0.22, 0, 0, Math.PI * 2); ctx.fill(); } break;
     case 'cross': ctx.fillRect(-r * 0.25, -r * 0.8, r * 0.5, r * 1.6); ctx.fillRect(-r * 0.8, -r * 0.25, r * 1.6, r * 0.5); break;
+    case 'clapper': ctx.fillRect(-r * 0.8, -r * 0.2, r * 1.6, r); ctx.save(); ctx.rotate(-0.25); ctx.fillRect(-r * 0.85, -r * 0.62, r * 1.6, r * 0.32); ctx.restore();
+      ctx.globalCompositeOperation = 'destination-out'; ctx.save(); ctx.rotate(-0.25); for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-r * 0.7 + i * r * 0.42, -r * 0.62); ctx.lineTo(-r * 0.5 + i * r * 0.42, -r * 0.62); ctx.lineTo(-r * 0.62 + i * r * 0.42, -r * 0.3); ctx.lineTo(-r * 0.82 + i * r * 0.42, -r * 0.3); ctx.fill(); } ctx.restore(); break;
+    case 'pencil': ctx.rotate(-0.8); ctx.fillRect(-r * 0.18, -r * 0.9, r * 0.36, r * 1.3); ctx.beginPath(); ctx.moveTo(-r * 0.18, r * 0.4); ctx.lineTo(r * 0.18, r * 0.4); ctx.lineTo(0, r * 0.85); ctx.fill(); break;
+    case 'keyframe': ctx.beginPath(); ctx.moveTo(0, -r * 0.8); ctx.lineTo(r * 0.65, 0); ctx.lineTo(0, r * 0.8); ctx.lineTo(-r * 0.65, 0); ctx.closePath(); ctx.fill(); break;
+    case 'laptop': ctx.fillRect(-r * 0.65, -r * 0.6, r * 1.3, r * 0.9); ctx.fillRect(-r * 0.9, r * 0.38, r * 1.8, r * 0.2); ctx.globalCompositeOperation = 'destination-out'; ctx.fillRect(-r * 0.5, -r * 0.46, r, r * 0.62); break;
+    case 'sparkle': for (const [sx, sy, sr] of [[0, 0, 0.85], [0.6, -0.55, 0.35], [-0.6, 0.55, 0.3]]) { ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4, rr = (i % 2 ? 0.25 : 1) * sr * r; ctx.lineTo(sx * r + Math.cos(a) * rr, sy * r + Math.sin(a) * rr); } ctx.closePath(); ctx.fill(); } break;
+    case 'megaphone': ctx.beginPath(); ctx.moveTo(-r * 0.7, -r * 0.25); ctx.lineTo(r * 0.6, -r * 0.75); ctx.lineTo(r * 0.6, r * 0.75); ctx.lineTo(-r * 0.7, r * 0.25); ctx.closePath(); ctx.fill(); ctx.fillRect(-r * 0.9, -r * 0.25, r * 0.25, r * 0.5); break;
+    case 'jet': ctx.rotate(-0.5); ctx.beginPath(); ctx.moveTo(r * 0.95, 0); ctx.lineTo(-r * 0.6, -r * 0.16); ctx.lineTo(-r * 0.6, r * 0.16); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(r * 0.15, 0); ctx.lineTo(-r * 0.35, -r * 0.75); ctx.lineTo(-r * 0.5, -r * 0.7); ctx.lineTo(-r * 0.2, 0); ctx.lineTo(-r * 0.5, r * 0.7); ctx.lineTo(-r * 0.35, r * 0.75); ctx.closePath(); ctx.fill(); break;
+    case 'pill': ctx.rotate(-0.7); ctx.beginPath(); ctx.roundRect(-r * 0.85, -r * 0.36, r * 1.7, r * 0.72, r * 0.36); ctx.fill(); ctx.globalCompositeOperation = 'destination-out'; ctx.fillRect(-r * 0.03, -r * 0.4, r * 0.06, r * 0.8); break;
+    case 'quill': ctx.rotate(-0.6); ctx.beginPath(); ctx.moveTo(0, r * 0.95); ctx.quadraticCurveTo(r * 0.55, 0, 0, -r * 0.95); ctx.quadraticCurveTo(-r * 0.55, 0, 0, r * 0.95); ctx.fill(); ctx.globalCompositeOperation = 'destination-out'; ctx.lineWidth = r * 0.08; ctx.beginPath(); ctx.moveTo(0, r * 0.9); ctx.lineTo(0, -r * 0.7); ctx.stroke(); break;
   }
   ctx.restore();
 }

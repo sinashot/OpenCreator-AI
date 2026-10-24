@@ -16,6 +16,13 @@ function faText(c, str, x, y, size, weight, color, align = 'center') {
 }
 
 // ---------------------------------------------------------------- F-14, brick-built
+let jetTag = null;
+function JET_TAG() {
+  if (jetTag) return jetTag;
+  jetTag = G.canvasTexture(256, 112);
+  jetTag.draw((c, w, h) => { c.font = `900 84px Inter, ${FA}`; c.fillStyle = '#F4F1EA'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('F-14', w / 2, h / 2 + 4); });
+  return jetTag;
+}
 export function jet() {
   const g = new THREE.Group();
   const grey = plastic('#8D98A3'), dark = plastic('#4A535C'), glass = plastic('#1D2A36', { roughness: 0.1, clearcoat: 1, env: 1 });
@@ -25,6 +32,8 @@ export function jet() {
   for (const sd of [-1, 1]) {
     const wing = mesh(new THREE.BoxGeometry(2.0, 0.08, 2.6), grey); wing.position.set(-0.2, 0, sd * 1.65); wing.rotation.y = sd * 0.55; g.add(wing);
     const tail = mesh(new THREE.BoxGeometry(1.1, 1.2, 0.08), dark); tail.position.set(-2.2, 0.75, sd * 0.4); tail.rotation.z = -0.35; g.add(tail);
+    const tag = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.42), new THREE.MeshBasicMaterial({ map: JET_TAG(), transparent: true, side: THREE.DoubleSide, toneMapped: false }));
+    tag.position.set(-2.18, 0.78, sd * 0.45); tag.rotation.set(0, sd > 0 ? 0 : Math.PI, -0.35); g.add(tag);
     const stab = mesh(new THREE.BoxGeometry(1.0, 0.06, 1.1), grey); stab.position.set(-2.3, -0.05, sd * 0.85); stab.rotation.y = sd * 0.4; g.add(stab);
     const eng = mesh(new THREE.CylinderGeometry(0.3, 0.34, 1.2, 14), dark); eng.rotation.z = Math.PI / 2; eng.position.set(-2.4, -0.25, sd * 0.32); g.add(eng);
   }
@@ -84,7 +93,7 @@ export const SCROLL_W = 2.2, SCROLL_LEN = 9, SCROLL_HANG = 3.5;
 export function scroll(variant = 'rules') {
   const W = 660, H = 2700;          // same aspect as the paper (2.2 x 9 units)
   const tex = G.canvasTexture(W, H);
-  const paint = (glitch = 0, seed = 0) => tex.draw((c) => {
+  const paint = (glitch = 0, seed = 0, hl = -1) => tex.draw((c) => {
     c.fillStyle = '#F6EEDB'; c.fillRect(0, 0, W, H);
     c.strokeStyle = 'rgba(160,120,70,.25)'; c.lineWidth = 2;
     for (let y = 140; y < H; y += 64) { c.beginPath(); c.moveTo(30, y); c.lineTo(W - 30, y); c.stroke(); }
@@ -113,6 +122,9 @@ export function scroll(variant = 'rules') {
     }
     RULES.forEach((r, i) => {
       const y = 1110 + i * 270;
+      if (i === hl) {   // the rule being read: a highlighter stripe behind it
+        c.fillStyle = 'rgba(255,214,64,.75)'; c.beginPath(); c.roundRect(24, y - 62, W - 48, 150, 26); c.fill();
+      }
       // the number in a red circle, the rule wrapped right-aligned
       c.fillStyle = '#B3261E'; c.beginPath(); c.arc(W - 62, y, 34, 0, Math.PI * 2); c.fill();
       faText(c, faNum(i + 1), W - 62, y + 2, 40, 800, '#fff');
@@ -153,22 +165,24 @@ export function scroll(variant = 'rules') {
   }
   return {
     group: g, paint,
-    layout(x, hangTop, z0, len) {
-      const hl = Math.max(0.01, hangTop - 0.03);
+    // hangs from y = hangTop at z0 (at most hangMax long), the rest runs along the floor toward +z
+    layout(x, hangTop, z0, len, hangMax = 99) {
+      const hl = Math.max(0.01, Math.min(hangTop - 0.03, hangMax));
       const used = Math.min(TOTAL, hl + len);
       g.position.set(x, 0, 0);
       top.position.set(0, hangTop, z0);
-      hang.scale.y = Math.min(hl, used); hang.position.set(0, hangTop - Math.min(hl, used) / 2, z0);
-      setUV(hang, 0, Math.min(hl, used) / TOTAL);
-      const fl = Math.max(0.001, used - hl);
-      floor.visible = fl > 0.01;
+      const hh = Math.min(hl, used);
+      hang.scale.y = hh; hang.position.set(0, hangTop - hh / 2, z0);
+      setUV(hang, 0, hh / TOTAL);
+      const onFloor = hangTop - hl < 0.12, fl = Math.max(0.001, used - hl);
+      floor.visible = onFloor && fl > 0.01;
       floor.scale.y = fl; floor.position.set(0, STUD_H + 0.03, z0 + fl / 2);
       setUV(floor, hl / TOTAL, used / TOTAL);
-      roll.position.set(0, used > hl ? 0.2 + STUD_H : hangTop - hl, z0 + (used > hl ? fl : 0));
-      roll.scale.setScalar(1);
+      roll.position.set(0, floor.visible ? 0.2 + STUD_H : hangTop - hl, z0 + (floor.visible ? fl : 0));
       const left = 1 - used / TOTAL;
       roll.scale.set(0.5 + left, 1, 0.5 + left);
     },
+
   };
 }
 
@@ -387,4 +401,36 @@ export function puffs(n = 10) {
   const list = [];
   for (let i = 0; i < n; i++) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), m.clone()); g.add(s); list.push(s); }
   return { group: g, list };
+}
+
+// ---------------------------------------------------------------- Sina's own marks on the set
+// a brick display stand with a printed name tile (Lego minifig stands), in the character's colour
+export function nameStand(name, bg, ink) {
+  const g = new THREE.Group();
+  const base = brick(4, 2, '#2B2B2E', { h: PLATE }); g.add(base);
+  const tile = new THREE.Group(); tile.position.set(0, PLATE + 0.02, 0.15); tile.rotation.x = -0.32; g.add(tile);
+  const tex = G.canvasTexture(512, 192);
+  tex.draw((c, w, h) => { c.fillStyle = bg; c.fillRect(0, 0, w, h); faText(c, name, w / 2, h / 2 + 6, 120, 900, ink); });
+  const body = mesh(roundBox(3.1, 0.9, 0.14, 0.04), plastic(bg)); body.position.y = 0.45; tile.add(body);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 0.85), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.35 }));
+  face.position.set(0, 0.45, 0.075); tile.add(face);
+  return g;
+}
+// a big brick picture frame on legs holding Sina's own portrait: his mark in the set
+export function posterBoard(img) {
+  const g = new THREE.Group();
+  const red = plastic('#C8102E', { clearcoat: 0.6 });
+  const W_ = 2.4, H_ = W_ * (img.height / img.width);
+  const frame = mesh(roundBox(W_ + 0.28, H_ + 0.28, 0.22, 0.05), red); frame.position.y = 1.0 + H_ / 2; g.add(frame);
+  const tex = new THREE.Texture(img); tex.colorSpace = THREE.SRGBColorSpace; tex.needsUpdate = true;
+  const pic = new THREE.Mesh(new THREE.PlaneGeometry(W_, H_), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.6 }));
+  pic.position.set(0, 1.0 + H_ / 2, 0.12); g.add(pic);
+  for (const sd of [-1, 1]) { const leg = brick(1, 1, '#2B2B2E', { h: 1.05 }); leg.position.set(sd * (W_ / 2 - 0.3), 0, -0.05); g.add(leg); }
+  return g;
+}
+export function megaphone() {
+  const g = new THREE.Group();
+  const cone = mesh(new THREE.CylinderGeometry(0.32, 0.1, 0.7, 20, 1, true), plastic('#F2B33D')); cone.material.side = THREE.DoubleSide; cone.rotation.x = Math.PI / 2; g.add(cone);
+  const grip = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 10), plastic('#2B2B2E')); grip.position.set(0, -0.2, -0.15); g.add(grip);
+  return g;
 }
