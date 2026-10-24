@@ -22,6 +22,8 @@ Everything is a pure function of time: `window.seek(t)` paints frame `t`.
 | `audio/tts.mjs` | real voices from ElevenLabs (`eleven_v3`, one cached take per line, with timestamps) |
 | `audio/voices.json` | which ElevenLabs voice plays whom, and the model |
 | `audio/vo_build.mjs` | places the takes, re-times the film around them → `vo.wav`, `speech.json` |
+| `audio/vo_fit.mjs` | fits the takes into the film as already rendered (no re-render) → `vo.wav` |
+| `audio/vo/` | the ElevenLabs takes (Brian for Sina, Liam for Claude), cached per line |
 | `audio/score.py` | the score + custom effects → `audio/music.wav`, `beats.json` |
 | `dev/sheet.js` | a model sheet of both characters (`sheet.html`) |
 

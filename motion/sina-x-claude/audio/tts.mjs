@@ -58,7 +58,7 @@ for (const line of LINES) {
   if (only && !only.includes(line.id)) continue;
   const who = CFG[line.who];
   const { tag, text, full } = spoken(line);
-  const settings = { ...CFG.settings, ...(who.settings || {}) };
+  const settings = { ...CFG.settings, ...(who.settings || {}), ...(line.ttsSpeed ? { speed: line.ttsSpeed } : {}) };
   const body = { text: full, model_id: CFG.model, voice_settings: settings, ...(CFG.language_code ? { language_code: CFG.language_code } : {}) };
   const hash = crypto.createHash('sha1').update(JSON.stringify([who.voice_id, body])).digest('hex').slice(0, 10);
   const base = path.join(VO, `${line.id}.${hash}`);
