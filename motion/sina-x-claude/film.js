@@ -298,7 +298,7 @@ function events(t, tq, act) {
   {
     const p = prog(t, 17.55, 19.3);
     show(w.jet, p > 0 && p < 1);
-    w.jet.position.set(lerp(9.5, -10.5, p), 6.6 - 0.9 * Math.sin(Math.PI * p), -5.5 + 1.5 * Math.sin(Math.PI * p));
+    w.jet.position.set(lerp(9.5, -10.5, p), 5.4 - 0.6 * Math.sin(Math.PI * p), -6.0 + 1.5 * Math.sin(Math.PI * p));
     w.jet.rotation.set(0.5 * Math.sin(p * 6) * 0.3 - 0.45, Math.PI + 0.25, 0.1);
   }
   // --- the capsule (20.0 .. 22.4): drops, bounces, rolls away
@@ -485,7 +485,7 @@ function screen(obj, off = [0, 0, 0]) {
   v3.project(W3.cam);
   return [(v3.x + 1) / 2 * W, (1 - v3.y) / 2 * H, v3.z];
 }
-const CUTS = [47.8];
+const CUTS = [10.85, 47.8];
 function lineEnd(i) {
   const l = S.LINES[i], nx = S.LINES[i + 1];
   let e = Math.min(nx ? nx.t - 0.06 : 1e9, l.t + l.d + 0.75);
@@ -517,7 +517,7 @@ function overlays(ctx, t) {
     const tags = [['صبح · تدوینگر', 'sunrise'], ['ظهر · گرافیست', 'sun'], ['عصر · موشن‌دیزاینر', 'sunset'], ['شب · پرامپت‌نویس', 'moon']];
     w.sClones.forEach((f, i) => {
       const t0 = 10.9 + i * 0.5;
-      const k = E.outBack(prog(t, t0, t0 + 0.3), 2) * (1 - E.inBack(prog(t, 14.0, 14.25)));
+      const k = E.outBack(prog(t, t0, t0 + 0.3), 2) * (1 - E.inBack(prog(t, 13.3, 13.55)));
       if (k <= 0 || !f.root.visible) return;
       const p = screen(f.parts.headTop, [0, 0.55, 0]);
       const y = p[1] - 110 - (i % 2) * 100, x = clamp(p[0], 200, W - 200);
