@@ -50,6 +50,33 @@ S.LINES.forEach((l, i) => { l.index = i; LINES_OF[l.who].push(l); });
 const SPEECH = new Map(S.LINES.map((l) => [l, speech(l, l.index)]));
 const mouthCache = new Map(SPEECH);
 
+// Real voices (audio/vo_build.mjs): speech.json holds the time warp that makes room for each take,
+// the word times and a mouth envelope per speaker. Without it the film keeps its own timing.
+const SP = await fetch('speech.json').then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const WARP = SP?.warp || [[0, 0], [1e4, 1e4]];
+function warpMap(x, from, to) {
+  for (let i = 1; i < WARP.length; i++) {
+    if (x > WARP[i][from]) continue;
+    const a = WARP[i - 1], b = WARP[i];
+    return b[from] === a[from] ? b[to] : a[to] + ((x - a[from]) / (b[from] - a[from])) * (b[to] - a[to]);
+  }
+  const l = WARP[WARP.length - 1];
+  return x - l[from] + l[to];
+}
+const toNew = (t) => warpMap(t, 0, 1), toOld = (t) => warpMap(t, 1, 0);
+if (SP) for (const l of S.LINES) {
+  const r = SP.lines[l.id];
+  if (!r) continue;
+  const disp = SPEECH.get(l).words, n = disp.length, m = r.words.length;
+  const words = disp.map((w, i) => ({ text: w.text, t: toOld(m === n ? r.words[i] : r.t0 + (r.t1 - r.t0) * (i / n)) }));
+  SPEECH.set(l, { words, syl: [], end: toOld(r.t1) });
+}
+// the mouth follows the real voice: its loudness, sampled at the film's new time
+function realMouth(who, tOld) {
+  const e = SP.env[who], i = Math.round(toNew(tOld) * 100);
+  return { open: Math.min(1, (e[i] || 0) * 1.15), vis: 0.85 + 0.15 * ((i >> 3) % 3) };
+}
+
 function exprAt(who, t) {
   const tr = EXPR_TRACK[who];
   let i = 0;
@@ -174,7 +201,7 @@ function actor(fig, who, t) {
     const k = E.outCubic(prog(tq, a, a + 0.6)) * (1 - E.inCubic(prog(tq, b - 0.15, b)));
     y += k * (h + 0.08 * Math.sin(tq * 3));
   }
-  const m = mouthAt(LINES_OF[who], tq, mouthCache);
+  const m = SP ? realMouth(who, tq) : mouthAt(LINES_OF[who], tq, mouthCache);
   const talking = m.open > 0.02 || LINES_OF[who].some((l) => tq > l.t && tq < SPEECH.get(l).end);
   const q = { ...pose };
   q.headY += look[0]; q.headX += look[1];
@@ -490,6 +517,8 @@ function lineEnd(i) {
   const l = S.LINES[i], nx = S.LINES[i + 1];
   let e = Math.min(nx ? nx.t - 0.06 : 1e9, l.t + l.d + 0.75);
   for (const c of CUTS) if (l.t < c && e > c) e = c;
+  // a real take may run longer than its slot: keep the bubble up until it has been said
+  e = Math.max(e, Math.min(nx ? nx.t - 0.06 : 1e9, SPEECH.get(l).end + 0.35));
   return e;
 }
 
@@ -697,7 +726,7 @@ const HIT_S = [
   [83.92, 'spark bounce', 'tok', { pitch: 'G5' }], [84.5, 'spark bounce 2', 'tok', { pitch: 'G5', gain: 0.15 }],
   [84.6, 'end card', 'bell', { pitch: 'F6', verb: 0.5 }], [85.4, 'thumb', 'pop', { pitch: 'C6' }],
 ];
-const HITS = HIT_S.map(([t, l, s, o]) => [+(t * 2).toFixed(3), l, s, o]);
+const HITS = HIT_S.map(([t, l, s, o]) => [+(toNew(t) * 2).toFixed(3), l, s, o]);
 
 // ---------------------------------------------------------------- film
 M.film({
@@ -709,7 +738,8 @@ M.film({
     await G.initGL({ exposure: 1.0, scale: Number(new URLSearchParams(location.search).get('gls') || 0.85) });
     SET = build(IMG);
   },
-  draw(ctx, u, t) {
+  draw(ctx, u, tNew) {
+    const t = toOld(tNew);            // the acting is authored in the script's own time
     const mw = O.moodWeights(S.MOOD, t);
     const pedX = W / 2;
     O.background(ctx, mw, t, pedX);

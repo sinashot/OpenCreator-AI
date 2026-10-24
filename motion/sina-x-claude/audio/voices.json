@@ -1,0 +1,7 @@
+{
+  "model": "eleven_v3",
+  "language_code": null,
+  "settings": { "stability": 0.5, "similarity_boost": 0.8, "style": 0.0, "use_speaker_boost": true },
+  "S": { "name": "Sina (deep, warm male)", "voice_id": "nPczCjzI2devNBz1zQrb" },
+  "C": { "name": "Claude (bright, playful)", "voice_id": "TX3LPaxmHKxFdv7VOQHJ" }
+}

@@ -18,7 +18,10 @@ Everything is a pure function of time: `window.seek(t)` paints frame `t`.
 | `sets/props.js` | F-14, capsule, reference tiles, rules scroll, Hiro's frame, tomato timer, cups… |
 | `overlay.js` | mood backgrounds, RTL speech bubbles, tags, stamps, cartoon marks |
 | `syllables.js` | speech timing shared by the mouths, the bubbles and the voice |
-| `audio/voice.mjs` | babble voices → `audio/vo.wav` |
+| `audio/voice.mjs` | babble voices → `audio/vo.wav` (the fallback) |
+| `audio/tts.mjs` | real voices from ElevenLabs (`eleven_v3`, one cached take per line, with timestamps) |
+| `audio/voices.json` | which ElevenLabs voice plays whom, and the model |
+| `audio/vo_build.mjs` | places the takes, re-times the film around them → `vo.wav`, `speech.json` |
 | `audio/score.py` | the score + custom effects → `audio/music.wav`, `beats.json` |
 | `dev/sheet.js` | a model sheet of both characters (`sheet.html`) |
 
@@ -35,6 +38,11 @@ node $SK/scripts/mix.mjs sina-x-claude --no-mux --music-db -3 --vo-db 0
 ./render_chunks.sh 0:11 11:22 22:33 33:44 44:55 55:66 66:77 77:88   # 24 fps, video only
 # then concat the chunks and mux mix.wav -> out/sina-x-claude/final.mp4
 ```
+
+With real voices, run `./voice_pipeline.sh` instead: it needs `ELEVENLABS_API_KEY` in the
+environment and `api.elevenlabs.io` allowed by its network policy. Each line's take is placed at its
+cue; where a take is longer than the time before the next line, that stretch of the film slows to
+make room (`speech.json` holds the warp; the film, the hits and the score all follow it).
 
 Sina's photos (`assets/ref_*`) and the rendered videos are kept out of git on purpose; put the
 portrait back at `assets/ref_portrait.png` before rendering.
