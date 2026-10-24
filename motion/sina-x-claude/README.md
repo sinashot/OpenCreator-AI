@@ -36,6 +36,9 @@ node $SK/scripts/mix.mjs sina-x-claude --no-mux --music-db -3 --vo-db 0
 # then concat the chunks and mux mix.wav -> out/sina-x-claude/final.mp4
 ```
 
+Sina's photos (`assets/ref_*`) and the rendered videos are kept out of git on purpose; put the
+portrait back at `assets/ref_portrait.png` before rendering.
+
 Stills for checking: `node shoot.mjs sina-x-claude/index.html 9x16 12.5,40 out/dev/x`.
 
 ## Rules kept
