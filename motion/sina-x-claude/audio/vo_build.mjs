@@ -21,13 +21,21 @@ const VO = process.env.VO_DIR || path.join(HERE, 'vo');
 const SR = 48000, ENV_HZ = 100;
 const MAX_DUR = 89.5, MAX_SPEED = 1.12, LEAD = 0.06, GAP = 0.22;
 
-// newest take per line
+// newest take per line: tts.mjs takes (<id>.<hash>.mp3 + .json with timestamps), or plain files
+// made elsewhere and dropped in as <nn>_<id>.mp3 / <id>.mp3 (no timestamps: words are spread evenly)
 const takes = {};
-for (const f of fs.readdirSync(VO).filter((f) => f.endsWith('.json'))) {
-  const j = JSON.parse(fs.readFileSync(path.join(VO, f), 'utf8'));
-  const mp3 = path.join(VO, f.replace(/\.json$/, '.mp3'));
-  const mt = fs.statSync(mp3).mtimeMs;
-  if (!takes[j.id] || takes[j.id].mt < mt) takes[j.id] = { ...j, mp3, mt };
+const ids = new Set(LINES.map((l) => l.id));
+for (const f of fs.readdirSync(VO).filter((f) => /\.(mp3|wav|m4a)$/i.test(f))) {
+  const file = path.join(VO, f), mt = fs.statSync(file).mtimeMs;
+  const meta = file.replace(/\.(mp3|wav|m4a)$/i, '.json');
+  let j;
+  if (fs.existsSync(meta)) j = JSON.parse(fs.readFileSync(meta, 'utf8'));
+  else {
+    const id = f.replace(/\.(mp3|wav|m4a)$/i, '').replace(/^\d+[_-]/, '').split('.')[0];
+    if (!ids.has(id)) { console.warn(`skipping ${f}: no line with id "${id}"`); continue; }
+    j = { id, alignment: null };
+  }
+  if (!takes[j.id] || takes[j.id].mt < mt) takes[j.id] = { ...j, mp3: file, mt };
 }
 const missing = LINES.filter((l) => !takes[l.id]).map((l) => l.id);
 if (missing.length) { console.error(`no take for: ${missing.join(', ')} (run tts.mjs)`); process.exit(1); }
