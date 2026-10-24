@@ -2,8 +2,9 @@
 //
 //   NODE_USE_ENV_PROXY=1 node sina-x-claude/audio/tts.mjs [--voices] [--only id,id] [--force]
 //
-// Reads ELEVENLABS_API_KEY from the environment (never from a file in the repo) and the voice
-// choice from audio/voices.json. Every take is cached in audio/vo/<line>.<hash>.mp3 + .json, so a
+// The key: either a network secret on the environment (the agent proxy adds the xi-api-key header to
+// requests for api.elevenlabs.io, so the key never enters the session), or ELEVENLABS_API_KEY in the
+// environment. Never a file in the repo. The voice choice comes from audio/voices.json. Every take is cached in audio/vo/<line>.<hash>.mp3 + .json, so a
 // re-run only pays for lines whose text, voice or settings changed. --voices lists the account's
 // voices and exits.
 import fs from 'node:fs';
@@ -19,12 +20,12 @@ const API = 'https://api.elevenlabs.io';
 const args = process.argv.slice(2);
 const opt = (n) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : null; };
 
-if (!KEY) { console.error('ELEVENLABS_API_KEY is not set in this environment.'); process.exit(1); }
+if (!KEY) console.log('ELEVENLABS_API_KEY not set: relying on a network secret for api.elevenlabs.io');
 
 async function api(pathname, init = {}) {
   let r;
   try {
-    r = await fetch(API + pathname, { ...init, headers: { 'xi-api-key': KEY, 'Content-Type': 'application/json', ...(init.headers || {}) } });
+    r = await fetch(API + pathname, { ...init, headers: { ...(KEY ? { 'xi-api-key': KEY } : {}), 'Content-Type': 'application/json', ...(init.headers || {}) } });
   } catch (e) {
     console.error(`cannot reach ${API} (${e.cause?.code || e.message}). Run with NODE_USE_ENV_PROXY=1, and allow api.elevenlabs.io in the environment's network settings.`);
     process.exit(1);
