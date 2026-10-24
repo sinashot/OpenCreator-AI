@@ -137,7 +137,7 @@ function build(IMG) {
   const scroll = PR.scroll(); scene.add(scroll.group);
   const ped = PR.pedestal(); ped.group.position.set(0, -6, -2.8); scene.add(ped.group);
   const hiroStack = PR.tileStack(14, 0); hiroStack.group.position.set(1.85, 0, -2.6); scene.add(hiroStack.group);
-  const myStack = PR.tileStack(2, 3); myStack.group.position.set(-2.9, 0, -1.2); scene.add(myStack.group);
+  const myStack = PR.tileStack(2, 3); myStack.group.position.set(-1.75, 0, 1.7); myStack.group.scale.setScalar(0.8); scene.add(myStack.group);
   const lbrick = PR.labelBrick(); scene.add(lbrick.group);
   const tom = PR.tomato(); tom.group.position.set(1.85, 0, 2.4); scene.add(tom.group);
   const tl = PR.timeline(); tl.group.position.set(-0.5, 0, 2.2); tl.group.scale.setScalar(0.42); scene.add(tl.group);
@@ -578,10 +578,10 @@ function overlays(ctx, t) {
   }
   // Hiro: "more projects" chips under the stacks (45 .. 47.7)
   if (t > 45.0 && t < 47.75) {
-    const hs = screen(w.hiroStack.group, [0, 14 * 0.33 + 0.5, 0]), ms = screen(w.myStack.group, [0, 1.2, 0]);
+    const hs = screen(w.hiroStack.group, [0, 7 * 0.33, 0]), ms = screen(w.myStack.group, [0, 1.0, 0]);
     const k1 = E.outBack(prog(t, 45.9, 46.15), 2) * (1 - prog(t, 47.6, 47.75)), k2 = E.outBack(prog(t, 46.2, 46.45), 2) * (1 - prog(t, 47.6, 47.75));
-    O.tag(ctx, 'پروژه‌های هیرو: ' + O.faNum(14), clamp(hs[0], 260, W - 260), Math.max(560, hs[1] - 30), k1, { bg: '#B7791F', size: 34 });
-    O.tag(ctx, 'پروژه‌های من: ' + O.faNum(2), clamp(ms[0], 260, W - 260), ms[1] - 30, k2, { bg: '#5A6390', size: 34 });
+    O.tag(ctx, 'پروژه‌های هیرو: ' + O.faNum(14), clamp(hs[0], 260, W - 250), clamp(hs[1], 760, 1300), k1, { bg: '#B7791F', size: 36 });
+    O.tag(ctx, 'پروژه‌های من: ' + O.faNum(2), clamp(ms[0], 250, W - 260), clamp(ms[1] - 40, 760, 1400), k2, { bg: '#5A6390', size: 36 });
   }
   // whisper hearts (52.4 .. 53.8)
   if (t > 52.4 && t < 53.9) {
