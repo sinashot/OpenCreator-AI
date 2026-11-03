@@ -18,7 +18,7 @@ const server = http.createServer((q, r) => {
   if (!fs.existsSync(f)) { r.writeHead(404); return r.end(); }
   r.writeHead(200, { 'content-type': types[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r);
 }).listen(0);
-const url = `http://127.0.0.1:${server.address().port}/bird-flu/index.html`;
+const url = `http://127.0.0.1:${server.address().port}/bird-flu/index.html${process.env.Q ? "?" + process.env.Q : ""}`;
 const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 async function page() {
   const p = await browser.newPage({ viewport: { width: 1080, height: 1920 } });
