@@ -1,0 +1,332 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="cv" width="1080" height="1920"></canvas>
+<script>
+const W=1080,H=1920;
+// dark clinical palette + CREATOR LAB accents: life = brand green, painkiller = brand purple
+const C={ink:'#06070A',panel:'#0E1016',line:'#232633',white:'#F4F5F7',mute:'#7D8190',
+  lime:'#8FF23C',violet:'#8A3FFC',amber:'#FFB23F',red:'#FF2D3D',cyan:'#55E7FF',lung:'#FF8A9A',coral:'#FF5A4E'};
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const off=document.createElement('canvas');off.width=W;off.height=420;const octx=off.getContext('2d');
+</script>
+<script src="helpers.js"></script>
+<script>
+const O=0.6, DUR=75;
+let WT=[];
+const w=(i,j)=>O+WT[i][j];
+
+// ---------- breathing model: rate (breaths/min) and depth over time ----------
+let PH=[],AMP=[],RATE=[],BREATHS=[],PULSES=[];const HZ=120;
+function buildModel(){
+  const tPain=w(4,1), tShallow=w(7,6), tAlc=w(8,4), tHit=w(11,2), tSup=w(12,5), tOff=w(14,11);
+  const R=t=>{let r=16;r=L(r,11,k(t,tPain,2.5,EIO));r=L(r,6,k(t,tAlc,3,EIO));r=L(r,2.5,k(t,tHit,1.0,EIO));r=L(r,1.2,k(t,tSup,2.5,EIO));r=L(r,0,k(t,tOff,0.15));return r;};
+  const A=t=>{let a=1;a=L(a,0.6,k(t,tShallow,1.2,EIO));a=L(a,0.42,k(t,tAlc,2,EIO));a=L(a,0.22,k(t,tHit,0.8));a=L(a,0.1,k(t,tSup,2));a=L(a,0,k(t,tOff,0.12));return a;};
+  let ph=0.25,lastB=0,lastP=0;
+  for(let i=0;i<=DUR*HZ;i++){const t=i/HZ;const r=R(t);ph+=r/60/HZ;PH.push(ph);AMP.push(A(t));RATE.push(r);
+    if(Math.floor(ph)>lastB){lastB=Math.floor(ph);if(t>1.0&&t<tOff)BREATHS.push([t,A(t),r]);}
+    if(Math.floor(ph*4)>lastP){lastP=Math.floor(ph*4);if(t>w(3,3)-0.2&&t<tHit+0.05)PULSES.push(t);}}
+  window.T_HIT=tHit;window.T_OFF=tOff;window.T_PAIN=tPain;window.T_ALC=tAlc;
+}
+const at=(arr,t)=>arr[Math.max(0,Math.min(arr.length-1,Math.round(t*HZ)))];
+function travel(te){return te<T_PAIN?1.0:te<T_ALC?1.7:2.5;}
+
+// ---------- effects ----------
+function shakeAt(t){let x=0,y=0;for(const [te,m] of SHAKES){if(t<te||t>te+1.5)continue;const d=t-te,e=m*Math.exp(-d*7);x+=e*Math.sin(d*71+te);y+=e*Math.cos(d*53+te*2);}return [x,y];}
+let SHAKES=[];
+function glitchText(s,x,y,sz,col,amt,t,seed=1,wg=900){
+  octx.setTransform(1,0,0,1,0,0);octx.clearRect(0,0,W,off.height);
+  octx.font=`${wg} ${sz}px Vaz`;octx.direction='rtl';octx.textAlign='center';octx.textBaseline='middle';
+  const cy=off.height/2;
+  const fr=Math.floor(t*24);
+  ctx.save();
+  if(amt>0.02){
+    octx.fillStyle=C.red;octx.fillText(s,W/2,cy);ctx.globalAlpha=0.8*Math.min(1,amt*2);ctx.globalCompositeOperation='lighter';
+    ctx.drawImage(off,x-W/2-14*amt,y-cy);octx.clearRect(0,0,W,off.height);octx.fillStyle=C.cyan;octx.fillText(s,W/2,cy);ctx.drawImage(off,x-W/2+14*amt,y-cy+3*amt);
+    ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;octx.clearRect(0,0,W,off.height);}
+  octx.fillStyle=col;octx.fillText(s,W/2,cy);
+  // horizontal slice displacement — image-level, joins stay intact
+  const n=12,hh=off.height/n;
+  for(let i=0;i<n;i++){const r=rnd(i*13+fr*7+seed);const dx=(r>1-amt*0.6)?(rnd(i+fr+seed*3)-0.5)*90*amt:0;
+    ctx.drawImage(off,0,i*hh,W,hh,x-W/2+dx,y-cy+i*hh,W,hh);}
+  ctx.restore();
+}
+function vignette(a){const g=ctx.createRadialGradient(540,960,200,540,960,1150);g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,`rgba(0,0,0,${a})`);ctx.fillStyle=g;ctx.fillRect(-200,-200,W+400,H+400);}
+function scanlines(a){ctx.fillStyle=`rgba(0,0,0,${a})`;for(let y=0;y<H;y+=6)ctx.fillRect(0,y,W,2);}
+function boil(t,i){return (rnd(i*7.3+Math.floor(t*12)*1.7)-0.5)*2.2;}
+
+// ---------- props ----------
+function capsule(x,y,s,rot,cA=C.violet,cB=C.white,a=1){ctx.save();ctx.globalAlpha*=a;ctx.translate(x,y);ctx.rotate(rot);
+  ctx.fillStyle=cA;rr(-s,-s*0.42,s,s*0.84,s*0.42);ctx.fill();ctx.fillStyle=cB;rr(0,-s*0.42,s,s*0.84,s*0.42);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.35)';rr(-s*0.8,-s*0.3,s*1.4,s*0.14,s*0.07);ctx.fill();ctx.restore();}
+function glass(x,y,s,fill,a=1,slosh=0){ctx.save();ctx.globalAlpha*=a;ctx.translate(x,y);
+  const tw=s*0.62,bw=s*0.5,h=s*1.1;
+  ctx.save();ctx.beginPath();ctx.moveTo(-tw,-h/2);ctx.lineTo(tw,-h/2);ctx.lineTo(bw,h/2);ctx.lineTo(-bw,h/2);ctx.closePath();ctx.clip();
+  const ly=L(h/2,-h*0.05,fill);ctx.fillStyle=C.amber;ctx.beginPath();ctx.moveTo(-tw,ly+slosh*s*0.08);ctx.lineTo(tw,ly-slosh*s*0.08);ctx.lineTo(tw,h);ctx.lineTo(-tw,h);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.25)';rr(-s*0.25,ly-s*0.05,s*0.3,s*0.3,s*0.05);ctx.fill();rr(s*0.05,ly+s*0.12,s*0.26,s*0.26,s*0.05);ctx.fill();ctx.restore();
+  ctx.strokeStyle='rgba(244,245,247,.9)';ctx.lineWidth=s*0.06;ctx.lineJoin='round';ctx.beginPath();ctx.moveTo(-tw,-h/2);ctx.lineTo(-bw,h/2);ctx.lineTo(bw,h/2);ctx.lineTo(tw,-h/2);ctx.stroke();
+  ctx.lineWidth=s*0.1;ctx.beginPath();ctx.moveTo(-bw,h/2);ctx.lineTo(bw,h/2);ctx.stroke();ctx.restore();}
+
+// ---------- anatomy (line art, hand-drawn boil) ----------
+const BR={x:540,y:720}, LU={x:540,y:1250};
+const NERVE_TOP=840, NERVE_BOT=1090;
+function brain(t,a,col){ctx.save();ctx.globalAlpha*=a;ctx.strokeStyle=col;ctx.lineWidth=6;ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.shadowColor=col;ctx.shadowBlur=24;
+  ctx.beginPath();ctx.ellipse(BR.x+boil(t,1),BR.y+boil(t,2),150,108,0,0,7);ctx.stroke();
+  for(let i=0;i<7;i++){const ang=-2.6+i*0.55,r1=40+rnd(i)*20,r2=105+rnd(i+5)*20;ctx.beginPath();
+    ctx.moveTo(BR.x+Math.cos(ang)*r1+boil(t,i+10),BR.y+Math.sin(ang)*r1*0.72);
+    ctx.quadraticCurveTo(BR.x+Math.cos(ang+0.3)*(r1+r2)/2,BR.y+Math.sin(ang+0.3)*(r1+r2)/2*0.72+boil(t,i+20),BR.x+Math.cos(ang)*r2,BR.y+Math.sin(ang)*r2*0.72);ctx.stroke();}
+  // brain stem
+  ctx.beginPath();ctx.moveTo(BR.x-26,BR.y+80);ctx.quadraticCurveTo(BR.x-20+boil(t,40),NERVE_TOP-20,BR.x-14,NERVE_TOP);ctx.moveTo(BR.x+26,BR.y+80);ctx.quadraticCurveTo(BR.x+20,NERVE_TOP-20,BR.x+14,NERVE_TOP);ctx.stroke();
+  ctx.restore();}
+function lungs(t,a,breath,grey){ctx.save();ctx.globalAlpha*=a;const s=1+0.07*breath;ctx.translate(LU.x,LU.y);ctx.scale(s,s);
+  const col=mix(C.lung,'#4A4D57',grey);ctx.strokeStyle=col;ctx.lineWidth=6;ctx.lineJoin='round';ctx.lineCap='round';
+  ctx.shadowColor=col;ctx.shadowBlur=30*(1-grey);
+  for(const sd of [-1,1]){ctx.beginPath();ctx.moveTo(sd*40,-150);
+    ctx.bezierCurveTo(sd*150+boil(t,sd*3),-190,sd*250,-40,sd*235,120+boil(t,sd*5));ctx.bezierCurveTo(sd*225,200,sd*110,215,sd*55,150);ctx.bezierCurveTo(sd*40,60,sd*45,-60,sd*40,-150);
+    ctx.fillStyle=grey<0.5?`rgba(255,138,154,${0.10+0.12*breath})`:'rgba(80,80,90,.10)';ctx.fill();ctx.stroke();
+    // bronchial tree
+    ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(sd*8,-120);ctx.lineTo(sd*60,-40);ctx.lineTo(sd*120,20);ctx.moveTo(sd*60,-40);ctx.lineTo(sd*90,80);ctx.moveTo(sd*120,20);ctx.lineTo(sd*170,60);ctx.moveTo(sd*120,20);ctx.lineTo(sd*150,120);ctx.stroke();ctx.lineWidth=6;}
+  ctx.beginPath();ctx.moveTo(0,-170);ctx.lineTo(0,-120);ctx.stroke();
+  ctx.restore();}
+
+// ---------- the breathing monitor (carries the whole film) ----------
+function monitor(t,x,y,w,h,a){
+  if(a<=0)return;ctx.save();ctx.globalAlpha*=a;
+  const flat=t>=T_OFF;const danger=Math.min(1,Math.max(0,(16-at(RATE,t))/14));
+  const col=flat?C.red:mix(C.lime,C.red,danger);
+  ctx.fillStyle='rgba(8,10,14,.92)';rr(x,y,w,h,28);ctx.fill();ctx.strokeStyle=mix('#232633',C.red,danger*0.7);ctx.lineWidth=3;ctx.stroke();
+  // grid
+  ctx.strokeStyle='rgba(143,242,60,.07)';ctx.lineWidth=1;for(let gx=x+20;gx<x+w-220;gx+=30){ctx.beginPath();ctx.moveTo(gx,y+12);ctx.lineTo(gx,y+h-12);ctx.stroke();}
+  // waveform: last 7 seconds
+  const ww=w-260,span=7,base=y+h/2+6;
+  ctx.save();ctx.beginPath();ctx.rect(x+16,y+8,ww,h-16);ctx.clip();
+  ctx.strokeStyle=col;ctx.lineWidth=5;ctx.shadowColor=col;ctx.shadowBlur=16;ctx.beginPath();
+  for(let i=0;i<=ww;i+=3){const tt=t-span+span*i/ww;if(tt<0)continue;const v=at(AMP,tt)*Math.sin(2*Math.PI*at(PH,tt));
+    const yy=base-v*(h*0.33)+(rnd(i+Math.floor(tt*30))-0.5)*1.5;if(i===0)ctx.moveTo(x+16+i,yy);else ctx.lineTo(x+16+i,yy);}
+  ctx.stroke();
+  // leading dot
+  const v=at(AMP,t)*Math.sin(2*Math.PI*at(PH,t));ctx.fillStyle=col;ctx.beginPath();ctx.arc(x+16+ww,base-v*(h*0.33),8,0,7);ctx.fill();ctx.restore();
+  // readout
+  const r=Math.round(at(RATE,t));
+  ctx.fillStyle=col;ctx.font='900 92px Vaz';ctx.direction='ltr';ctx.textAlign='center';ctx.shadowColor=col;ctx.shadowBlur=20;
+  const blink=flat&&Math.floor(t*2.5)%2===0;if(!blink)ctx.fillText(fa(r),x+w-118,y+h/2+28);ctx.shadowBlur=0;
+  txt('تنفس در دقیقه',x+w-118,y+h-22,26,700,'rgba(244,245,247,.6)');
+  txt(flat?'⚠ بدون تنفس':'● زنده',x+w-118,y+40,24,800,col);
+  ctx.restore();}
+
+// ---------- scenes ----------
+function sceneA(t){ // cold open
+  const fl=t<0.6?(rnd(Math.floor(t*30))>0.6?1:0):0;
+  if(fl){ctx.fillStyle='rgba(255,45,61,.18)';ctx.fillRect(0,0,W,H);}
+  // pills rain on «مصرف زیاد», shatter on «نیست»
+  const t0=w(0,4)-0.2,t1=w(0,6);
+  if(t>t0&&t<w(1,0)+0.4){for(let i=0;i<46;i++){const sx=60+rnd(i)*960,st=t0+rnd(i+9)*0.6,vy=900+rnd(i+3)*700;if(t<st)continue;
+      let d=Math.min(t,t1)-st,yy=-80+vy*d,xx=sx,rot=rnd(i+5)*6+d*(rnd(i+2)-0.5)*4;
+      if(t>t1){const e=t-t1;xx+=(rnd(i+11)-0.5)*900*e;yy+=-300*e+1600*e*e;rot+=e*8;}
+      capsule(xx,yy,34+rnd(i+7)*20,rot,[C.violet,C.coral,C.amber,C.cyan][i%4],C.white,t>t1?Math.max(0,1-(t-t1)*1.2):1);}}
+  const ex=w(1,0)-0.15;
+  // the title word, glitching
+  const p=k(t,O,0.25);
+  if(p>0&&t<ex+0.3){const g=Math.max(0.15,1-(t-O)*0.9)+(Math.abs(t-t1)<0.25?1:0);const sz=L(250,170,k(t,O+0.9,0.6,EIO)),yy=L(860,430,k(t,O+0.9,0.6,EIO));
+    ctx.save();ctx.globalAlpha=1-k(t,ex,0.25,EI);ctx.translate(540,yy);const s=L(1.4,1,p);ctx.scale(s,s);glitchText('اوردوز',0,0,sz,C.red,Math.min(1,g),t,3);ctx.restore();}
+  line(t,[Wd('همیشه',w(0,1)),Wd('به',w(0,2)),Wd('خاطر',w(0,3))],660,78,{w:700,exit:ex});
+  line(t,[Wd('مصرف',w(0,4)),Wd('زیاد',w(0,5),{bg:C.white,c:C.ink})],810,112,{w:900,exit:ex});
+  // «نیست» stamps over and strikes the line
+  const np=k(t,t1,0.2);
+  if(np>0&&t<ex+0.3){ctx.save();ctx.globalAlpha=1-k(t,ex,0.25,EI);ctx.strokeStyle=C.red;ctx.lineWidth=14;ctx.lineCap='round';ctx.beginPath();ctx.moveTo(800,780);ctx.lineTo(L(800,280,np),780+L(0,30,np));ctx.stroke();
+    ctx.translate(540,1010);ctx.rotate(-0.06);const s=L(2.2,1,np);ctx.scale(s,s);ctx.fillStyle=C.red;rr(-170,-80,340,150,22);ctx.fill();txt('نیست.',0,30,110,900,C.white);ctx.restore();}
+}
+function sceneB(t){ // tiny amounts → lungs fail (teaser)
+  const ex=w(2,0)-0.1;if(t>ex+0.2)return;const a=1-k(t,ex,0.2,EI);
+  ctx.save();ctx.globalAlpha=a;
+  line(t,[Wd('گاهی',w(1,0)),Wd('ترکیب',w(1,1),{bg:C.violet})],360,112,{w:900});
+  // «بسیار کم» drawn deliberately tiny
+  line(t,[Wd('مقادیر',w(1,2))],520,96,{w:800});
+  const tp=k(t,w(1,3),0.4);if(tp>0){ctx.save();ctx.globalAlpha*=tp;txt('بسیار کم',540,600,34,800,C.amber);ctx.strokeStyle=C.amber;ctx.lineWidth=3;ctx.beginPath();ctx.arc(540,590,95,0,7*tp);ctx.stroke();ctx.restore();}
+  // one small pill + one drop drift together
+  const m=k(t,w(1,1),2.2,EIO);if(m>0){capsule(L(780,575,m),L(860,880,m),26,0.4+m,C.violet,C.white,1-k(t,w(1,5),0.3));
+    ctx.save();ctx.fillStyle=C.amber;ctx.globalAlpha*=1-k(t,w(1,5),0.3);const dx=L(300,505,m),dy=L(860,880,m);ctx.beginPath();ctx.moveTo(dx,dy-30);ctx.quadraticCurveTo(dx+22,dy,dx,dy+14);ctx.quadraticCurveTo(dx-22,dy,dx,dy-30);ctx.fill();ctx.restore();}
+  // lungs appear, then fail with a glitch on «از کار»
+  const lp=k(t,w(1,5),0.4),fail=k(t,w(1,9),0.25);
+  if(lp>0){ctx.save();ctx.translate(540,L(1250,1150,lp));ctx.scale(lp,lp);ctx.translate(-540,-1250);lungs(t,1,0.6*(1-fail)*Math.max(0,Math.sin(t*5)),fail);ctx.restore();
+    if(fail>0){glitchText('ریه‌ها از کار می‌افتن',540,1430,72,C.red,0.8*(1-k(t,w(1,9)+0.6,0.6))+0.2,t,8,900);}}
+  if(t<w(1,9))line(t,[Wd('ریه‌ها',w(1,5)),Wd('رو',w(1,7)),Wd('کاملاً',w(1,8),{c:C.red})],1430,84,{w:900});
+  ctx.restore();
+}
+function sceneC(t){ // the equation
+  const s=w(2,0)-0.05,ex=w(3,0)-0.2;if(t<s||t>ex+1.2)return;
+  line(t,[Wd('مثلاً',w(2,0))],330,70,{w:700,c:C.mute,exit:ex});
+  const pin=k(t,w(2,2),0.5),gin=k(t,w(2,8),0.5),fly=k(t,ex,0.9,EIO);
+  // pill (right) and glass (left); afterwards they fly away and return later
+  if(pin>0){const px=L(1200,770,pin),py=900;capsule(L(px,1250,fly),L(py,700,fly),95,-0.35+0.2*Math.sin(t*2),C.violet,C.white,1);
+    if(fly<0.5){ctx.save();ctx.globalAlpha=pin*(1-fly*2);txt('مسکن',770,1080,72,900,C.white);
+      const tp=k(t,w(2,3),0.4);if(tp>0){ctx.globalAlpha*=tp;ctx.fillStyle=C.violet;rr(620,1110,300,70,35);ctx.fill();txt('تجویز شده',770,1158,40,800,C.white);}ctx.restore();}}
+  const plus=k(t,w(2,5),0.35);if(plus>0&&fly<0.5){ctx.save();ctx.globalAlpha=1-fly*2;ctx.translate(540,900);ctx.rotate((1-plus)*2);ctx.scale(plus,plus);txt('+',0,36,140,900,C.white);ctx.restore();}
+  if(gin>0){glass(L(L(-200,310,gin),-250,fly),L(900,700,fly),120,k(t,w(2,8)+0.2,0.8),1,Math.sin(t*4)*(1-k(t,w(2,8),1.5)));
+    if(fly<0.5){ctx.save();ctx.globalAlpha=gin*(1-fly*2);txt('یک لیوان',310,1080,72,900,C.white);
+      const tp=k(t,w(2,9),0.4);if(tp>0){ctx.globalAlpha*=tp;ctx.fillStyle=C.amber;rr(160,1110,300,70,35);ctx.fill();txt('نوشیدنی الکلی',310,1158,40,800,C.ink);}ctx.restore();}}
+  // = ?
+  const q=k(t,w(2,10)+0.35,0.35);if(q>0&&fly<0.6){ctx.save();ctx.globalAlpha=1-fly*1.7;const pulse=1+0.06*Math.sin(t*9);ctx.translate(540,1420);ctx.scale(q*pulse,q*pulse);
+    ctx.fillStyle=C.red;ctx.shadowColor=C.red;ctx.shadowBlur=40;rr(-130,-100,260,200,40);ctx.fill();ctx.shadowBlur=0;txt('= ؟',0,40,120,900,C.white);ctx.restore();}
+}
+function diagram(t){ // brain stem → nerve → lungs, the explainer spine
+  const s=w(3,0)-0.3;if(t<s||t>w(14,0)+0.6)return;
+  const da=k(t,s,0.8)*(1-k(t,w(14,0),0.5,EI));
+  const sup=k(t,w(12,5),2.0),dead=k(t,w(11,2),0.6);
+  const breath=at(AMP,t)*Math.max(0,Math.sin(2*Math.PI*at(PH,t)));
+  // draw-on of the lines
+  ctx.save();ctx.globalAlpha=da;
+  brain(t,1,mix(C.cyan,'#5A6070',dead*0.8));
+  // nerve
+  const nc=t<T_PAIN?C.lime:t<T_ALC?mix(C.lime,C.violet,k(t,T_PAIN,1)):mix(C.violet,C.amber,k(t,T_ALC,1));
+  const ncol=mix(nc,'#3A3D48',dead);
+  ctx.strokeStyle=ncol;ctx.lineWidth=7;ctx.shadowColor=ncol;ctx.shadowBlur=20*(1-dead);ctx.setLineDash(dead>0.5?[18,16]:[]);
+  const draw=k(t,s+0.3,0.9,EIO);ctx.beginPath();ctx.moveTo(540,NERVE_TOP);
+  for(let yy=NERVE_TOP;yy<=L(NERVE_TOP,NERVE_BOT,draw);yy+=10)ctx.lineTo(540+Math.sin(yy*0.035)*10+boil(t,yy),yy);ctx.stroke();ctx.setLineDash([]);ctx.shadowBlur=0;
+  lungs(t,k(t,s+0.6,0.6),breath,Math.max(sup,dead*0.4));
+  // pulses
+  for(const te of PULSES){if(te>t)break;const tr=travel(te);let p=(t-te)/tr;
+    let fade=1;if(t>T_HIT){p=Math.min(p,(T_HIT-te)/tr);fade=1-k(t,T_HIT+0.2,0.6);} // freeze and die
+    if(p<0||p>1||fade<=0)continue;const yy=L(NERVE_TOP,NERVE_BOT,p);ctx.save();ctx.globalAlpha*=fade;ctx.fillStyle=t>T_HIT?C.red:nc;ctx.shadowColor=nc;ctx.shadowBlur=30;
+    ctx.beginPath();ctx.arc(540+Math.sin(yy*0.035)*10,yy,15,0,7);ctx.fill();ctx.restore();}
+  // labels
+  const l1=k(t,w(3,0),0.4),l2=k(t,s+0.9,0.4);
+  ctx.save();ctx.globalAlpha*=l1;ctx.fillStyle=C.cyan;rr(720,640,240,64,32);ctx.fill();txt('ساقه مغز',840,684,38,900,C.ink);ctx.restore();
+  ctx.save();ctx.globalAlpha*=l2;ctx.fillStyle=mix(C.lung,'#555',sup);rr(760,1360,200,64,32);ctx.fill();txt('ریه‌ها',860,1404,38,900,C.ink);ctx.restore();
+  // the pill sticks onto the nerve, the glass joins later
+  const pp=k(t,w(4,1)-0.1,0.7,EIO);if(pp>0)capsule(L(1250,610,pp),L(700,950,pp),54,L(-0.4,1.4,pp)+0.05*Math.sin(t*3),C.violet,C.white,1);
+  if(pp>0.9){ctx.save();ctx.globalAlpha*=k(t,w(4,1)+0.6,0.4)*0.5*(1+Math.sin(t*4))*0.5;ctx.strokeStyle=C.violet;ctx.lineWidth=4;ctx.beginPath();ctx.arc(610,950,70+10*Math.sin(t*4),0,7);ctx.stroke();ctx.restore();}
+  const gp=k(t,T_ALC-0.55,0.55,EI);if(gp>0){const gy=L(-200,960,gp);glass(445,gy,70,0.6,1,Math.sin(t*6)*Math.exp(-Math.max(0,t-T_ALC)*2));
+    if(t>T_ALC){for(let i=0;i<22;i++){const d=t-T_ALC;if(d>1.2)break;const a=-Math.PI*rnd(i),v=300+rnd(i+4)*500;ctx.fillStyle=C.amber;ctx.globalAlpha=Math.max(0,1-d*0.9)*da;
+      ctx.beginPath();ctx.arc(445+Math.cos(a)*v*d,920+Math.sin(a)*v*d+700*d*d,7,0,7);ctx.fill();}ctx.globalAlpha=da;}}
+  ctx.restore();
+}
+function scrimText(t,a){if(a<=0)return;ctx.fillStyle=`rgba(4,5,8,${0.9*a})`;ctx.fillRect(-200,-200,W+400,H+400);}
+
+function overlays(t){
+  // D: brain stem drives breathing
+  line(t,[Wd('ساقه',w(3,0)),Wd('مغز',w(3,1),{c:C.cyan})],300,104,{w:900,exit:w(4,0)-0.25});
+  line(t,[Wd('با',w(3,2)),Wd('پالس‌های',w(3,5),{bg:C.lime,c:C.ink}),Wd('عصبی',w(3,7))],440,70,{w:800,exit:w(4,0)-0.25});
+  line(t,[Wd('تنفس',w(3,8),{c:C.lime}),Wd('رو',w(3,9)),Wd('کنترل',w(3,10)),Wd('می‌کنه',w(3,11))],540,62,{w:700,c:'rgba(244,245,247,.8)',exit:w(4,0)-0.25});
+  line(t,[Wd('داروی',w(4,0)),Wd('مسکن',w(4,1),{bg:C.violet})],300,104,{w:900,exit:w(5,0)-0.2});
+  line(t,[Wd('سرعت',w(4,2)),Wd('پالس‌ها',w(4,4)),Wd('رو',w(4,6)),Wd('پایین',w(4,7),{c:C.violet}),Wd('میاره',w(4,8))],450,66,{w:800,exit:w(5,0)-0.2});
+  // E: «مضعف» — the slow-motion word
+  const ea=k(t,w(5,0)-0.1,0.4)*(1-k(t,w(7,0)-0.3,0.3,EI));scrimText(t,ea);
+  if(ea>0){const p=k(t,w(5,2),0.9,EO);ctx.save();ctx.globalAlpha=ea;
+    for(let i=5;i>=0;i--){ctx.save();ctx.globalAlpha=ea*(i===0?1:0.12*p);ctx.translate(540+i*26*(1-p)+i*6,880+i*4);txt('مُضعِف',0,0,230,900,i===0?C.violet:C.violet);ctx.restore();}
+    const sp=k(t,w(5,2)+0.5,0.5);ctx.globalAlpha=ea*sp;ctx.font='700 46px "Inter Display", Inter';ctx.direction='ltr';ctx.textAlign='center';ctx.fillStyle=C.mute;ctx.fillText('DEPRESSANT',540,980);ctx.restore();}
+  if(ea>0){ctx.save();ctx.globalAlpha=ea;
+    line(t,[Wd('این',w(5,0)),Wd('داروها',w(5,1))],600,80,{w:800});
+    line(t,[Wd('فعالیت',w(6,1)),Wd('سیستم',w(6,2)),Wd('عصبی',w(6,3))],1120,70,{w:800});
+    line(t,[Wd('رو',w(6,4)),Wd('کُند',w(6,5),{bg:C.violet}),Wd('می‌کنن',w(6,6))],1240,86,{w:900});ctx.restore();}
+  // F: alone = shallow but tolerable
+  line(t,[Wd('مسکن',w(7,0),{c:C.violet}),Wd('به‌تنهایی',w(7,1))],300,96,{w:900,exit:w(8,0)-0.15});
+  line(t,[Wd('تنفس',w(7,3)),Wd('سطحی',w(7,6),{bg:C.amber,c:C.ink}),Wd('می‌شه',w(7,7))],440,72,{w:800,exit:w(8,0)-0.15});
+  const ok=k(t,w(7,12),0.4)*(1-k(t,w(8,0)-0.15,0.2,EI));if(ok>0){ctx.save();ctx.globalAlpha=ok;ctx.translate(540,1490);ctx.scale(0.8+0.2*ok,0.8+0.2*ok);ctx.fillStyle='rgba(143,242,60,.16)';rr(-210,-44,420,88,44);ctx.fill();ctx.strokeStyle=C.lime;ctx.lineWidth=3;ctx.stroke();txt('قابل تحمل ✓',0,16,44,800,C.lime);ctx.restore();}
+  // G: «اما» — red hit
+  const ama=w(8,0);if(t>=ama&&t<ama+0.55){const p=1-(t-ama)/0.55;ctx.fillStyle=`rgba(255,45,61,${0.85*p})`;ctx.fillRect(-200,-200,W+400,H+400);glitchText('اما…',540,960,260,C.white,0.9*p,t,21);}
+  line(t,[Wd('با',w(8,1)),Wd('اضافه',w(8,2)),Wd('شدن',w(8,3)),Wd('الکل',w(8,4),{bg:C.amber,c:C.ink})],320,96,{w:900,exit:w(9,0)-0.25});
+  line(t,[Wd('به',w(8,5)),Wd('این',w(8,6)),Wd('سیستمِ',w(8,7)),Wd('کُندشده',w(8,8),{c:C.violet})],450,66,{w:800,exit:w(9,0)-0.25});
+  // H: it multiplies — exponential curve
+  const ha=k(t,w(9,0)-0.2,0.35)*(1-k(t,w(11,0)-0.2,0.25,EI));scrimText(t,ha);
+  if(ha>0){ctx.save();ctx.globalAlpha=ha;
+    // mini equation
+    const e1=k(t,w(9,0),0.4);ctx.globalAlpha=ha*e1;capsule(760,560,46,-0.3,C.violet,C.white,1);txt('+',600,585,90,900,C.white);glass(450,560,46,0.6);
+    const ne=k(t,w(9,6),0.4);if(ne>0){ctx.globalAlpha=ha*ne;txt('جمع نمی‌شه!',540,720,84,900,C.white);}
+    // curve
+    const cp=k(t,w(10,3)-0.1,1.6,x=>x*x);ctx.globalAlpha=ha;
+    ctx.strokeStyle='rgba(244,245,247,.25)';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(180,800);ctx.lineTo(180,1380);ctx.lineTo(900,1380);ctx.stroke();
+    // additive (dashed) vs actual (exponential)
+    ctx.setLineDash([14,12]);ctx.strokeStyle=C.mute;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(180,1380);ctx.lineTo(L(180,900,Math.min(1,cp*1.2)),L(1380,1180,Math.min(1,cp*1.2)));ctx.stroke();ctx.setLineDash([]);
+    if(cp>0){ctx.strokeStyle=C.red;ctx.lineWidth=10;ctx.shadowColor=C.red;ctx.shadowBlur=30;ctx.beginPath();let lx=180,ly=1380;
+      for(let i=0;i<=60;i++){const u=i/60;if(u>cp)break;lx=180+720*u;ly=1380-560*(Math.exp(u*4)-1)/(Math.exp(4)-1);if(i===0)ctx.moveTo(lx,ly);else ctx.lineTo(lx,ly);}ctx.stroke();ctx.shadowBlur=0;
+      const mult=[1,2,4,8,16][Math.min(4,Math.floor(cp*5))];ctx.save();ctx.translate(Math.min(lx,800),Math.max(ly-70,840));const pop=1+0.3*Math.exp(-((cp*5)%1)*6);ctx.scale(pop,pop);
+      ctx.fillStyle=C.red;rr(-90,-50,180,90,24);ctx.fill();ctx.font='900 60px "Inter Display", Inter';ctx.direction='ltr';ctx.textAlign='center';ctx.fillStyle=C.white;ctx.fillText('×'+mult,0,22);ctx.restore();}
+    txt('جمع ساده',780,1160,34,700,C.mute);
+    const lab=k(t,w(10,3),0.3);if(lab>0)glitchText('اثر تصاعدی',540,1470,100,C.red,0.6,t,31);
+    ctx.restore();}
+  // I: the heavy hit
+  const hit=w(11,2);if(t>=hit&&t<hit+0.35){ctx.fillStyle=`rgba(255,255,255,${0.9*(1-(t-hit)/0.35)})`;ctx.fillRect(-200,-200,W+400,H+400);}
+  line(t,[Wd('ضربه‌ی',w(11,2)),Wd('سنگین',w(11,3),{bg:C.red})],300,110,{w:900,exit:w(12,0)-0.2});
+  line(t,[Wd('پالس‌ها',w(11,4)),Wd('کاملاً',w(11,7)),Wd('متوقف',w(11,8),{bg:C.white,c:C.ink}),Wd('می‌شن',w(11,9))],450,70,{w:800,exit:w(12,0)-0.2});
+  // J: suppression
+  line(t,[Wd('ریه‌ها',w(12,1)),Wd('پیامی',w(12,3),{c:C.mute}),Wd('نمی‌گیرن',w(12,4))],300,90,{w:900,exit:w(13,0)-0.2});
+  const sp=k(t,w(12,5),0.3)*(1-k(t,w(13,0)-0.2,0.25,EI));if(sp>0){ctx.save();ctx.globalAlpha=sp;glitchText('سرکوب تنفسی',540,460,120,C.red,0.5+0.5*Math.exp(-(t-w(12,5))*3),t,41);ctx.restore();}
+  // K: deadly accumulation
+  line(t,[Wd('و',w(13,0)),Wd('نتیجه‌ی',w(13,1))],320,80,{w:800,c:C.mute,exit:w(14,0)-0.2});
+  const ma=k(t,w(13,4),0.4)*(1-k(t,w(14,0)-0.2,0.25,EI));if(ma>0){ctx.save();ctx.globalAlpha=ma;txt('این انباشتگیِ',540,470,72,800,C.white);glitchText('مرگبار',540,610,170,C.red,0.4,t,51);ctx.restore();}
+}
+function sceneL(t){ // one pill, one glass — breath switched off
+  const s=w(14,0)-0.1;if(t<s)return;
+  const pp=k(t,w(14,2),0.5),gp=k(t,w(14,5),0.5);
+  line(t,[Wd('همان',w(14,0)),Wd('یک',w(14,1)),Wd('قرص',w(14,2),{c:C.violet}),Wd('و',w(14,3)),Wd('یک',w(14,4)),Wd('لیوان',w(14,5),{c:C.amber})],360,84,{w:900});
+  if(pp>0)capsule(660,700,L(0,70,pp),-0.4,C.violet,C.white,1);
+  if(gp>0)glass(420,700,L(0,90,gp),0.55);
+  line(t,[Wd('فرمان',w(14,6)),Wd('تنفس',w(14,7),{c:C.lime}),Wd('رو',w(14,8))],900,80,{w:800});
+  line(t,[Wd('برای',w(14,9)),Wd('همیشه',w(14,10),{bg:C.red})],1010,96,{w:900});
+}
+function monitorPlacement(t){
+  // bottom strip for most of the film; moves to centre for the final beat
+  const m=k(t,w(14,6)-0.2,0.8,EIO);
+  return {x:L(60,40,m),y:L(1560,1180,m),w:L(960,1000,m),h:L(220,300,m),a:k(t,O+0.5,0.6)};
+}
+function endCard(t){
+  const s=w(14,11)+1.9;if(t<s)return;
+  line(t,[Wd('هیچ‌وقت',s,{c:C.red}),Wd('مسکن',s+0.25),Wd('رو',s+0.4)],760,92,{w:900});
+  line(t,[Wd('با',s+0.6),Wd('الکل',s+0.75,{bg:C.amber,c:C.ink}),Wd('مصرف',s+0.95),Wd('نکن.',s+1.1)],900,92,{w:900});
+  line(t,[Wd('حتی',s+1.8),Wd('یک',s+1.95),Wd('لیوان.',s+2.1,{c:C.amber})],1040,64,{w:700,c:'rgba(244,245,247,.75)'});
+  line(t,[Wd('این',s+3.2),Wd('ویدیو',s+3.3),Wd('رو',s+3.4),Wd('برای',s+3.5),Wd('کسی',s+3.6),Wd('که',s+3.7),Wd('دوستش',s+3.8),Wd('داری',s+3.9),Wd('بفرست',s+4.0,{c:C.lime}),Wd('🤍',s+4.3)],1300,52,{w:700});
+  const b=k(t,s+4.8,0.8);if(b>0){ctx.save();ctx.globalAlpha=b;
+    ctx.font='800 30px "Inter Display", Inter';ctx.direction='ltr';ctx.textAlign='left';const word='CREATOR LAB';let tot=0;for(const ch of word)tot+=ctx.measureText(ch).width+7;let x=540-tot/2;
+    for(let i=0;i<word.length;i++){ctx.fillStyle=i>=8?C.lime:C.white;ctx.fillText(word[i],x,1560);x+=ctx.measureText(word[i]).width+7;}
+    txt('محتوای آموزشی است؛ درباره‌ی داروهات با پزشک یا داروساز مشورت کن.',540,1625,26,500,'rgba(244,245,247,.45)');ctx.restore();}
+  // one soft heartbeat glow — life goes on
+  const hb=w(14,11)+6.3;if(t>hb){const d=t-hb;const g=Math.exp(-d*3)*(1-Math.exp(-d*30));ctx.fillStyle=`rgba(143,242,60,${0.12*g})`;ctx.beginPath();ctx.arc(540,1300,500,0,7);ctx.fill();}
+}
+
+function draw(t){
+  ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  ctx.fillStyle=C.ink;ctx.fillRect(0,0,W,H);
+  const offT=T_OFF, crt0=offT+0.35, crt1=crt0+0.55;
+  if(t>=crt1){ // after the CRT collapse: black + end card
+    endCard(t);return;}
+  // background: faint medical grid, red tint creeping in as breathing fails
+  const danger=Math.min(1,Math.max(0,(16-at(RATE,t))/16));
+  const g=ctx.createRadialGradient(540,1000,100,540,1000,1100);g.addColorStop(0,mix('#0B1220','#2A0A10',danger));g.addColorStop(1,C.ink);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(85,231,255,.05)';const off2=(t*20)%80;for(let y=-80;y<H+80;y+=80)for(let x=40;x<W;x+=80){ctx.fillRect(x-1,y+off2-1,3,3);}
+  // camera: slow push + impulse shakes + CRT collapse
+  const [sx,sy]=shakeAt(t);let z=1+0.035*Math.sin(t*0.4)+0.04*k(t,w(13,0),3,EIO);
+  ctx.save();ctx.translate(540+sx,960+sy);
+  if(t>crt0){const c=(t-crt0)/(crt1-crt0);const vy=Math.max(0.004,1-EI(Math.min(1,c*1.8)));const vx=c>0.55?Math.max(0.002,1-EI((c-0.55)/0.45)):1;ctx.scale(vx,vy);}
+  ctx.scale(z,z);ctx.translate(-540,-960);
+  sceneA(t);sceneB(t);sceneC(t);diagram(t);overlays(t);sceneL(t);
+  const mp=monitorPlacement(t);monitor(t,mp.x,mp.y,mp.w,mp.h,mp.a);
+  ctx.restore();
+  // closing darkness during «deadly accumulation»
+  vignette(0.55+0.4*k(t,w(13,0),3));
+  scanlines(0.10);
+  if(t>crt0){const c=(t-crt0)/(crt1-crt0);ctx.fillStyle=`rgba(255,255,255,${0.5*Math.sin(Math.PI*Math.min(1,c))})`;ctx.fillRect(0,0,W,H);}
+  // brand bar
+  ctx.save();ctx.globalAlpha=0.55*k(t,1.2,0.6);ctx.font='800 26px "Inter Display", Inter';ctx.direction='ltr';ctx.textAlign='left';let x=60;
+  for(const ch of 'CREATOR LAB'){ctx.fillStyle=x>230?C.lime:C.white;ctx.fillText(ch,x,110);x+=ctx.measureText(ch).width+6;}ctx.restore();
+}
+window.draw=draw;window.DUR=DUR;
+
+async function init(){
+  WT=await (await fetch('wt.json')).json();
+  buildModel();
+  SHAKES=[[O,26],[w(0,6),30],[w(1,9),34],[w(8,0),40],[w(10,3),18],[w(10,3)+0.5,22],[w(10,3)+0.9,28],[w(10,3)+1.25,34],[w(11,2),60],[w(12,5),24],[w(14,11),20]];
+  const sfx=[['impact',O],['glitch',O],['rain',w(0,4)-0.2],['impact',w(0,6)],['glitch',w(0,6)],['whoosh',w(1,0)],['pop',w(1,1)],['impact',w(1,9)],['glitch',w(1,9)],
+    ['whoosh',w(2,2)-0.2],['pop',w(2,3)],['whoosh',w(2,8)-0.2],['pop',w(2,9)],['sting',w(2,10)+0.35],['whoosh',w(3,0)-0.3],['pop',w(3,1)],
+    ['whoosh',w(4,1)-0.1],['pop',w(4,1)+0.55],['slow',w(5,2)],['pop',w(7,6)],['ding',w(7,12)],['rise',w(8,0)-2],['impact',w(8,0)],['glitch',w(8,0)],
+    ['whoosh',T_ALC-0.55],['splash',T_ALC],['pop',w(9,6)],['tick',w(10,3)],['tick',w(10,3)+0.5],['tick',w(10,3)+0.9],['tick',w(10,3)+1.25],['glitch',w(10,3)],
+    ['rise',w(11,2)-1.6],['boom',w(11,2)],['glitch',w(12,5)],['impact',w(12,5)],['glitch',w(13,4)],['pop',w(14,2)],['pop',w(14,5)],['flat',w(14,11)],['crt',w(14,11)+0.35]];
+  for(const te of PULSES)sfx.push(['pulse',te]);
+  for(const [te,a,r] of BREATHS)sfx.push(['breath',te,a,r]);
+  window.SFX=sfx;window.MODEL={T_OFF,T_HIT,heart:[O,w(14,11)]};
+  const ff=new FontFace('Vaz','url(Vazirmatn-VF.ttf)',{weight:'100 900'});await ff.load();document.fonts.add(ff);
+  await document.fonts.load('900 40px "Inter Display"');await document.fonts.load('40px "Noto Color Emoji"');
+  draw(0);window.ready=true;
+}
+init();
+</script></body></html>
