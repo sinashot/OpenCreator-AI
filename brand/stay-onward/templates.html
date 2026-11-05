@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Stay Onward templates</title>
+<style>
+@font-face { font-family: 'Fraunces'; src: url('fonts/Fraunces.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Manrope'; src: url('fonts/Manrope.woff2') format('woff2'); font-weight: 200 800; }
+@font-face { font-family: 'Vazir'; src: url('../../motion/bird-flu/Vazirmatn-VF.ttf') format('truetype'); font-weight: 100 900; }
+:root { --ink: #101A26; --sand: #EEE7DA; --coral: #FF6A4D; --mist: #8E99A6; }
+body { margin: 0; background: #444; }
+.word { font-family: 'Fraunces', serif; font-weight: 420; font-variation-settings: 'opsz' 144, 'SOFT' 50; letter-spacing: -0.02em; line-height: 1; }
+.dot { display: inline-block; border-radius: 50%; background: var(--coral); }
+.hl { width: 1080px; height: 1920px; background: var(--ink); display: flex; align-items: center; justify-content: center; }
+.hl svg { width: 560px; height: 560px; }
+.reel { position: relative; width: 1080px; height: 1920px; background: var(--ink); color: var(--sand); overflow: hidden; }
+.brand { position: absolute; top: 190px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; font-size: 46px; }
+</style></head><body>
+<!-- highlight covers: line icons in sand, the brand dot in coral; Instagram shows the title under the circle -->
+<div class="hl" id="h_time"><svg viewBox="0 0 100 100" fill="none" stroke="#EEE7DA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M30 18h40M30 82h40M35 18C35 38 50 44 50 50S35 62 35 82M65 18C65 38 50 44 50 50S65 62 65 82"/><circle cx="50" cy="72" r="5" fill="#FF6A4D" stroke="none"/></svg></div>
+<div class="hl" id="h_memory"><svg viewBox="0 0 100 100" fill="none" stroke="#EEE7DA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M32 16h36v68L50 70 32 84z"/><circle cx="50" cy="40" r="5" fill="#FF6A4D" stroke="none"/></svg></div>
+<div class="hl" id="h_again"><svg viewBox="0 0 100 100" fill="none" stroke="#EEE7DA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M78 50a28 28 0 1 1-8.2-19.8"/><path d="M72 18v13H59"/><circle cx="50" cy="50" r="5" fill="#FF6A4D" stroke="none"/></svg></div>
+<div class="hl" id="h_within"><svg viewBox="0 0 100 100" fill="none" stroke="#EEE7DA" stroke-width="4.5">
+  <circle cx="50" cy="50" r="32"/><circle cx="50" cy="50" r="18" stroke-dasharray="4 7"/><circle cx="50" cy="50" r="6" fill="#FF6A4D" stroke="none"/></svg></div>
+<div class="hl" id="h_onward"><svg viewBox="0 0 100 100" fill="none" stroke="#EEE7DA" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="22" cy="50" r="7" fill="#FF6A4D" stroke="none"/><path d="M38 50h42M68 38l12 12-12 12"/></svg></div>
+
+<!-- reel cover: title kept inside the 3:4 grid crop (y 240-1680) and close to its middle -->
+<div class="reel" id="cover_example">
+  <div class="brand"><span class="word">stay</span><span class="dot" style="width:11px;height:11px;margin:16px 8px 0"></span><span class="word">onward</span></div>
+  <div style="position:absolute;top:640px;left:120px;right:120px;text-align:center">
+    <div class="word" style="font-size:118px;line-height:1.08">Someday<br>is not a day<br>of the week.</div>
+    <div style="margin:60px auto 0;width:90px;height:6px;border-radius:3px;background:var(--coral)"></div>
+    <div style="font:700 56px Vazir;direction:rtl;margin-top:50px;line-height:1.6">«یه روزی» توی تقویم نیست.</div>
+  </div>
+</div>
+<div class="reel" id="cover_blank">
+  <div class="brand"><span class="word">stay</span><span class="dot" style="width:11px;height:11px;margin:16px 8px 0"></span><span class="word">onward</span></div>
+  <div style="position:absolute;top:960px;left:0;right:0;display:flex;justify-content:center"><div style="width:90px;height:6px;border-radius:3px;background:var(--coral)"></div></div>
+</div>
+<!-- the logo overlay for every reel: small wordmark under Instagram's header, centred -->
+<div class="reel" id="overlay" style="background:transparent">
+  <div class="brand" style="opacity:.92"><span class="word">stay</span><span class="dot" style="width:11px;height:11px;margin:16px 8px 0"></span><span class="word">onward</span></div>
+</div>
+<!-- the safe-area guide: where Instagram's buttons and caption sit over a reel -->
+<div class="reel" id="guide">
+  <div style="position:absolute;inset:0 0 auto 0;height:115px;background:rgba(255,106,77,.35)"></div>
+  <div style="position:absolute;left:960px;top:925px;right:0;bottom:0;background:rgba(255,106,77,.35)"></div>
+  <div style="position:absolute;left:70px;top:1390px;width:240px;height:220px;background:rgba(255,106,77,.35);border-radius:30px"></div>
+  <div style="position:absolute;left:0;right:0;top:1660px;bottom:0;background:rgba(255,106,77,.35)"></div>
+  <div style="position:absolute;left:50px;right:50px;top:165px;height:760px;border:4px dashed var(--sand);border-radius:20px"></div>
+  <div style="position:absolute;left:50px;width:885px;top:925px;height:455px;border:4px dashed var(--sand);border-radius:20px"></div>
+  <div style="position:absolute;top:500px;left:0;right:0;text-align:center;font:700 52px Vazir;direction:rtl">ناحیه‌ی امن برای متن و تصویر</div>
+  <div style="position:absolute;top:1120px;left:50px;width:885px;text-align:center;font:600 40px Vazir;direction:rtl">زیرنویس‌ها همین‌جا، بالای حباب ری‌پست</div>
+  <div style="position:absolute;top:1740px;left:0;right:0;text-align:center;font:600 38px Vazir;direction:rtl;color:var(--ink)">کپشن و اسم پیج — خالی بماند</div>
+  <div style="position:absolute;top:240px;bottom:240px;left:0;right:0;border-top:3px solid var(--mist);border-bottom:3px solid var(--mist)"></div>
+  <div style="position:absolute;top:250px;right:70px;font:600 30px Manrope;color:var(--mist)">grid crop 3:4</div>
+</div>
+</body></html>
