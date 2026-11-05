@@ -30,6 +30,21 @@ const EPISODES = {
     [2, ['and you think you’re', 'back at the start.'], 'و فکر می‌کنی برگشتی سر خونه‌ی اول.'],
     [3, ['But you know', 'the road now.'], 'ولی حالا دیگه راه رو بلدی.'],
     [4, ['Get up.', 'Go on.'], 'بلند شو. ادامه بده.']] },
+  4: { open: ['Remember.', 'یادت باشه.'], cta: 'بفرستش برای کسی که دلت براش تنگ شده.', lines: [
+    [1, ['The people', 'you’re too busy for'], 'آدم‌هایی که براشون وقت نداری،'],
+    [2, ['won’t always be', 'a call away.'], 'همیشه فقط یه تماس باهات فاصله ندارن.'],
+    [3, ['Call them', 'tonight.'], 'امشب بهشون زنگ بزن.'],
+    [4, ['Say it', 'while you can.'], 'تا می‌تونی، بگو.']] },
+  5: { open: ['Slow down.', 'آروم‌تر.'], cta: 'سیوش کن برای روزهای مقایسه.', lines: [
+    [1, ['Their chapter', 'twenty'], 'فصل بیستِ زندگی اون‌ها'],
+    [2, ['is not your', 'chapter three.'], 'فصل سومِ زندگی تو نیست.'],
+    [3, ['Stop comparing', 'your pages.'], 'صفحه‌هات رو مقایسه نکن.'],
+    [4, ['Write', 'your own.'], 'داستان خودت رو بنویس.']] },
+  6: { open: ['Look up.', 'سرت رو بالا بگیر.'], cta: 'بفرستش برای همراهِ روزهای معمولیت.', lines: [
+    [1, ['One day', 'you’ll miss'], 'یه روزی دلت تنگ می‌شه'],
+    [2, ['this ordinary', 'Tuesday.'], 'برای همین سه‌شنبه‌ی معمولی.'],
+    [3, ['The small things', 'were the big things.'], 'چیزهای کوچیک، همون چیزهای بزرگ بودن.'],
+    [4, ['Live it', 'now.'], 'همین حالا زندگیش کن.']] },
 };
 const EP = EPISODES[Number(new URLSearchParams(location.search).get('ep') || 1)];
 const LINES = EP.lines;
@@ -54,6 +69,9 @@ function words(lines, x, y, size, t, t0, color) {
 }
 function persian(s, x, y, size, t, t0) {
   const k = E.out(prog(t, t0, t0 + 0.8));
+  // centred on the frame, never wider than the gap left of Instagram's action column (x 935)
+  ctx.font = font('Vazir', 600, size); ctx.direction = 'rtl';
+  const maxW = 2 * (935 - x) - 20, w = ctx.measureText(s).width; if (w > maxW) size *= maxW / w;
   ctx.save(); ctx.globalAlpha *= k * 0.9; ctx.font = font('Vazir', 600, size); ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = C.sand; ctx.fillText(s, x, y + (1 - k) * 20); ctx.restore();
 }
@@ -126,7 +144,7 @@ function seek(t) {
     const land = E.inOut(prog(t, t0, t0 + 0.9));
     dx = lerp(780, lx, land); dy = lerp(1160, ly, land); dr = lerp(22, 17, land);
     persian(EP.cta, CX, 1100, 46, t, t0 + 1.3);
-    ctx.save(); ctx.globalAlpha = E.out(prog(t, t0 + 1.6, t0 + 2.4)) * 0.8; ctx.font = font('Manrope', 600, 34); ctx.textAlign = 'center'; ctx.fillStyle = C.mist; ctx.letterSpacing = '6px';
+    ctx.save(); ctx.globalAlpha = E.out(prog(t, t0 + 1.6, t0 + 2.4)) * 0.8; ctx.font = font('Manrope', 600, 30); ctx.textAlign = 'center'; ctx.fillStyle = C.mist; ctx.letterSpacing = '4px';   // ~690 px: clear of the action column
     ctx.fillText('SMALL REMINDERS FOR THE ROAD AHEAD', CX, 1200); ctx.restore();
   }
   // ripples from the dot on each bar's downbeat
