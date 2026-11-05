@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Stay Onward logo</title>
+<style>
+@font-face { font-family: 'Fraunces'; src: url('fonts/Fraunces.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Manrope'; src: url('fonts/Manrope.woff2') format('woff2'); font-weight: 200 800; }
+@font-face { font-family: 'Vazir'; src: url('../../motion/bird-flu/Vazirmatn-VF.ttf') format('truetype'); font-weight: 100 900; }
+/* palette: midnight ink, sand paper, a coral dot = the pause */
+:root { --ink: #101A26; --sand: #EEE7DA; --coral: #FF6A4D; --mist: #8E99A6; }
+body { margin: 0; background: #444; font-family: 'Manrope', sans-serif; }
+.art { position: relative; display: flex; align-items: center; justify-content: center; }
+.word { font-family: 'Fraunces', serif; font-weight: 420; font-variation-settings: 'opsz' 144, 'SOFT' 50; letter-spacing: -0.02em; line-height: 1; }
+.dot { display: inline-block; border-radius: 50%; background: var(--coral); }
+/* the mark: a dot (stay) and a line that moves on (onward) */
+.mark { display: flex; align-items: center; }
+.mark .line { height: var(--lw); background: currentColor; border-radius: 99px; position: relative; }
+.mark .line::after { content: ''; position: absolute; right: calc(var(--lw) * -0.2); top: 50%; width: calc(var(--lw) * 3.2); height: calc(var(--lw) * 3.2);
+  border-top: var(--lw) solid currentColor; border-right: var(--lw) solid currentColor; transform: translateY(-50%) rotate(45deg); border-radius: 0 calc(var(--lw) * .5) 0 0; }
+</style></head><body>
+
+<!-- 1. profile picture: the mark on midnight -->
+<div id="p1" class="art" style="width:1080px;height:1080px;background:var(--ink);color:var(--sand)">
+  <div class="mark" style="--lw:34px"><span class="dot" style="width:120px;height:120px"></span><span style="width:70px"></span><span class="line" style="width:360px"></span></div>
+</div>
+<!-- 2. profile picture: monogram s.o -->
+<div id="p2" class="art" style="width:1080px;height:1080px;background:var(--sand);color:var(--ink)">
+  <span class="word" style="font-size:520px;margin-top:-60px">s</span><span class="dot" style="width:78px;height:78px;margin:220px 26px 0"></span><span class="word" style="font-size:520px;margin-top:-60px">o</span>
+</div>
+<!-- 3. profile picture: stacked wordmark -->
+<div id="p3" class="art" style="width:1080px;height:1080px;background:var(--ink);color:var(--sand);flex-direction:column;align-items:flex-start;padding-left:250px;box-sizing:border-box">
+  <div class="word" style="font-size:190px">stay<span class="dot" style="width:42px;height:42px;margin-left:10px"></span></div>
+  <div class="word" style="font-size:190px;margin-top:10px">onward</div>
+</div>
+<!-- 4. wordmark, dark on transparent -->
+<div id="w1" class="art" style="width:2400px;height:700px;color:var(--ink)">
+  <span class="word" style="font-size:300px">stay</span><span class="dot" style="width:62px;height:62px;margin:120px 34px 0"></span><span class="word" style="font-size:300px">onward</span>
+</div>
+<!-- 5. wordmark, light on transparent -->
+<div id="w2" class="art" style="width:2400px;height:700px;color:var(--sand)">
+  <span class="word" style="font-size:300px">stay</span><span class="dot" style="width:62px;height:62px;margin:120px 34px 0"></span><span class="word" style="font-size:300px">onward</span>
+</div>
+<!-- 6. horizontal lockup: mark + wordmark -->
+<div id="w3" class="art" style="width:2600px;height:700px;color:var(--ink);gap:90px">
+  <div class="mark" style="--lw:22px"><span class="dot" style="width:78px;height:78px"></span><span style="width:46px"></span><span class="line" style="width:230px"></span></div>
+  <span class="word" style="font-size:250px">stay onward</span>
+</div>
+
+<!-- brand sheet -->
+<div id="sheet" style="width:2400px;background:var(--sand);color:var(--ink);padding:120px 140px;box-sizing:border-box">
+  <div style="font:700 34px Manrope;letter-spacing:.3em;color:var(--mist)">BRAND IDENTITY</div>
+  <div style="display:flex;align-items:center;margin-top:30px"><span class="word" style="font-size:230px">stay</span><span class="dot" style="width:50px;height:50px;margin:90px 26px 0"></span><span class="word" style="font-size:230px">onward</span></div>
+  <div style="font:500 44px Manrope;margin-top:30px;max-width:1700px;line-height:1.5">The dot is the pause. The line is the road ahead. <br>Stop for a moment, then keep going.</div>
+  <div style="font:400 44px Vazir;margin-top:14px;direction:rtl;text-align:left;max-width:2100px">نقطه یعنی مکث؛ خط یعنی راهِ پیشِ رو. کمی بایست، بعد ادامه بده.</div>
+  <div style="display:flex;gap:70px;margin-top:90px">
+    <div style="width:520px;height:520px;border-radius:50%;overflow:hidden;background:var(--ink);display:flex;align-items:center;justify-content:center;color:var(--sand)"><div class="mark" style="--lw:17px"><span class="dot" style="width:60px;height:60px"></span><span style="width:34px"></span><span class="line" style="width:180px"></span></div></div>
+    <div style="width:520px;height:520px;border-radius:50%;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;border:3px solid #ddd"><span class="word" style="font-size:250px;margin-top:-30px">s</span><span class="dot" style="width:38px;height:38px;margin:105px 13px 0"></span><span class="word" style="font-size:250px;margin-top:-30px">o</span></div>
+    <div style="width:520px;height:520px;border-radius:50%;overflow:hidden;background:var(--ink);color:var(--sand);display:flex;flex-direction:column;justify-content:center;padding-left:120px;box-sizing:border-box"><div class="word" style="font-size:92px">stay<span class="dot" style="width:20px;height:20px;margin-left:5px"></span></div><div class="word" style="font-size:92px;margin-top:6px">onward</div></div>
+  </div>
+  <div style="display:flex;gap:40px;margin-top:100px;font:700 32px Manrope">
+    <div><div style="width:300px;height:170px;background:var(--ink);border-radius:20px"></div><div style="margin-top:16px">Midnight · #101A26</div></div>
+    <div><div style="width:300px;height:170px;background:var(--sand);border:3px solid #cfc6b5;border-radius:20px;box-sizing:border-box"></div><div style="margin-top:16px">Sand · #EEE7DA</div></div>
+    <div><div style="width:300px;height:170px;background:var(--coral);border-radius:20px"></div><div style="margin-top:16px">Coral · #FF6A4D</div></div>
+    <div><div style="width:300px;height:170px;background:var(--mist);border-radius:20px"></div><div style="margin-top:16px">Mist · #8E99A6</div></div>
+    <div style="margin-left:40px;font:500 34px Manrope;line-height:1.7"><div><b>Fraunces</b> — logo & titles</div><div><b>Manrope</b> — English text</div><div><b>Vazirmatn</b> — متن فارسی</div></div>
+  </div>
+</div>
+</body></html>
