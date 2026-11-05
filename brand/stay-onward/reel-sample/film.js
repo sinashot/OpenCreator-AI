@@ -13,13 +13,26 @@ const lerp = (a, b, k) => a + (b - a) * k;
 const E = { out: (k) => 1 - (1 - k) ** 3, inOut: (k) => (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2), outQuint: (k) => 1 - (1 - k) ** 5 };
 const TAU = Math.PI * 2;
 
-// the lines: [bar, English (Fraunces), Persian (Vazir)]
-const LINES = [
-  [1, ['You’ve been running', 'for so long,'], 'خیلی وقته داری می‌دوی،'],
-  [2, ['that you forgot', 'to ask where.'], 'که یادت رفته بپرسی به کجا.'],
-  [3, ['Stop', 'for a moment.'], 'یه لحظه بایست.'],
-  [4, ['Then,', 'go on.'], 'بعد، ادامه بده.'],
-];
+// the episodes: an opening word, then [bar, English lines (Fraunces), Persian (Vazir)], and the call to save
+const EPISODES = {
+  1: { open: ['Pause.', 'مکث کن.'], cta: 'سیوش کن برای روزهایی که یادت می‌ره.', lines: [
+    [1, ['You’ve been running', 'for so long,'], 'خیلی وقته داری می‌دوی،'],
+    [2, ['that you forgot', 'to ask where.'], 'که یادت رفته بپرسی به کجا.'],
+    [3, ['Stop', 'for a moment.'], 'یه لحظه بایست.'],
+    [4, ['Then,', 'go on.'], 'بعد، ادامه بده.']] },
+  2: { open: ['Notice.', 'دقت کن.'], cta: 'بفرستش برای کسی که همیشه می‌گه «یه روزی».', lines: [
+    [1, ['You keep saying', '“someday”,'], 'همیشه می‌گی «یه روزی»،'],
+    [2, ['but someday isn’t', 'on any calendar.'], 'ولی «یه روزی» توی هیچ تقویمی نیست.'],
+    [3, ['It’s called', 'today.'], 'اسمش امروزه.'],
+    [4, ['Begin', 'there.'], 'از همین‌جا شروع کن.']] },
+  3: { open: ['Breathe.', 'نفس بکش.'], cta: 'سیوش کن برای روزی که دوباره زمین خوردی.', lines: [
+    [1, ['You fell', 'again,'], 'دوباره زمین خوردی،'],
+    [2, ['and you think you’re', 'back at the start.'], 'و فکر می‌کنی برگشتی سر خونه‌ی اول.'],
+    [3, ['But you know', 'the road now.'], 'ولی حالا دیگه راه رو بلدی.'],
+    [4, ['Get up.', 'Go on.'], 'بلند شو. ادامه بده.']] },
+};
+const EP = EPISODES[Number(new URLSearchParams(location.search).get('ep') || 1)];
+const LINES = EP.lines;
 
 function font(fam, w, s) { return `${w} ${s}px ${fam}`; }
 function words(lines, x, y, size, t, t0, color) {
@@ -81,8 +94,8 @@ function seek(t) {
     const k = 1 - prog(t, BAR - 0.4, BAR);
     ctx.save(); ctx.globalAlpha = k;
     ctx.textAlign = 'center'; ctx.direction = 'ltr'; ctx.fillStyle = C.sand; ctx.font = font('Fraunces', 420, 150);
-    const kk = E.out(prog(t, 0.9, 1.8)); ctx.globalAlpha = k * kk; ctx.fillText('Pause.', CX, 760 + (1 - kk) * 30);
-    ctx.globalAlpha = k; persian('مکث کن.', CX, 1210, 58, t, 1.5);
+    const kk = E.out(prog(t, 0.9, 1.8)); ctx.globalAlpha = k * kk; ctx.fillText(EP.open[0], CX, 760 + (1 - kk) * 30);
+    ctx.globalAlpha = k; persian(EP.open[1], CX, 1210, 58, t, 1.5);
     ctx.restore();
     dr *= E.outQuint(prog(t, 0.1, 0.9));
   }
@@ -112,7 +125,7 @@ function seek(t) {
     const [lx, ly] = wordmark(CX, 860, 150, k);
     const land = E.inOut(prog(t, t0, t0 + 0.9));
     dx = lerp(780, lx, land); dy = lerp(1160, ly, land); dr = lerp(22, 17, land);
-    persian('سیوش کن برای روزهایی که یادت می‌ره.', CX, 1100, 46, t, t0 + 1.3);
+    persian(EP.cta, CX, 1100, 46, t, t0 + 1.3);
     ctx.save(); ctx.globalAlpha = E.out(prog(t, t0 + 1.6, t0 + 2.4)) * 0.8; ctx.font = font('Manrope', 600, 34); ctx.textAlign = 'center'; ctx.fillStyle = C.mist; ctx.letterSpacing = '6px';
     ctx.fillText('SMALL REMINDERS FOR THE ROAD AHEAD', CX, 1200); ctx.restore();
   }

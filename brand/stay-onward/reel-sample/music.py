@@ -1,5 +1,5 @@
 # A calm score for the sample reel: felt-piano chords and a soft pad at 72 bpm, a low swell under the logo.
-#   python3 music.py out.wav
+#   python3 music.py out.wav [episode]
 import subprocess, sys
 import numpy as np
 SR = 48000; BPM = 72; BEAT = 60 / BPM; BAR = BEAT * 4; DUR = BAR * 6
@@ -13,8 +13,15 @@ def piano(m, dur, vel=1.0):
     x = sum(a * np.sin(2 * np.pi * f * h * t) * np.exp(-t * (1.2 + h * 0.9)) for h, a in [(1, 1), (2, 0.45), (3, 0.18), (4, 0.08)])
     return x * np.minimum(1, t / 0.008) * vel * np.minimum(1, (dur - t) / 0.3)
 # Am - F - C - G, then F - (logo) C
-CH = [[57, 60, 64], [53, 57, 60], [48, 55, 60], [55, 59, 62], [53, 57, 60], [48, 52, 55, 60]]
-MEL = [[76, 74, 72], [72, 69], [67, 72, 74], [71, 74], [72, 69, 72], [79]]
+EP = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+CH, MEL = {
+    1: ([[57, 60, 64], [53, 57, 60], [48, 55, 60], [55, 59, 62], [53, 57, 60], [48, 52, 55, 60]],      # Am F C G F C
+        [[76, 74, 72], [72, 69], [67, 72, 74], [71, 74], [72, 69, 72], [79]]),
+    2: ([[53, 57, 60], [48, 55, 60], [57, 60, 64], [55, 59, 62], [50, 53, 57], [48, 52, 55, 60]],      # F C Am G Dm C
+        [[72, 69, 67], [67, 72], [76, 74, 72], [74, 71], [69, 72, 74], [76]]),
+    3: ([[48, 55, 60], [55, 59, 62], [57, 60, 64], [53, 57, 60], [55, 59, 62], [48, 52, 55, 60]],      # C G Am F G C
+        [[67, 72, 76], [74, 71], [72, 76], [69, 72, 77], [74, 79], [84]]),
+}[EP]
 for b, (ch, mel) in enumerate(zip(CH, MEL)):
     t0 = b * BAR
     add(piano(ch[0] - 12, BAR + 1.5, 0.8), t0, 0.35)
